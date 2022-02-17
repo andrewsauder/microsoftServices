@@ -34,7 +34,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 	 * @return \Microsoft\Graph\Model\DriveItem[]
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function list( array $microsoftPathParts ) : array {
+	public function list( array $microsoftPathParts=[] ) : array {
 		//get application access token
 		$accessToken = $this->getMicrosoftAccessToken();
 
@@ -97,7 +97,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 	 *
 	 * @return \andrewsauder\microsoftServices\components\upload
 	 */
-	public function upload( string $serverFullFilePath, string $fileName, array $uploadPathParts, string $conflictBehavior='replace' ) : \andrewsauder\microsoftServices\components\upload {
+	public function upload( string $serverFullFilePath, string $fileName, array $uploadPathParts=[], string $conflictBehavior='replace' ) : \andrewsauder\microsoftServices\components\upload {
 		$response = new \andrewsauder\microsoftServices\components\upload();
 
 		//get or user application access token
