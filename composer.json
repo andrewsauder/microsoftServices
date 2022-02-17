@@ -1,0 +1,17 @@
+{
+  "name": "andrewsauder/microsoft-services",
+  "description": "PHP wrapper for easy implementation of Microsoft Graph services",
+  "license": "MIT",
+  "autoload": {
+	"psr-4": {
+	  "andrewsauder\\microsoftServices\\": "src/"
+	}
+  },
+  "require": {
+	"php": ">=8.0",
+	"microsoft/microsoft-graph": "^1.53",
+	"guzzlehttp/guzzle": "^7.4.1",
+	"thenetworg/oauth2-azure": "^2.0",
+	"ext-fileinfo": "*"
+  }
+}
