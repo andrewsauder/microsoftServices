@@ -1,22 +1,15 @@
 <?php
 namespace andrewsauder\microsoftServices;
 
-
-use gcgov\framework\config;
 use andrewsauder\microsoftServices\exceptions\serviceException;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\GuzzleException;
 use Microsoft\Graph\Exception\GraphException;
 
 
-class files {
-
-	private \andrewsauder\microsoftServices\config $config;
-
-	private ?string                                $userAccessToken = null;
+class files extends \andrewsauder\microsoftServices\components\service {
 
 	public string                                  $rootBasePath    = '';
-
 
 	/**
 	 * @param  \andrewsauder\microsoftServices\config  $config
@@ -27,9 +20,8 @@ class files {
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
 	public function __construct( \andrewsauder\microsoftServices\config $config, ?string $userAccessToken = null, string $rootBasePath = '' ) {
-		$config->validateForFiles();
-		$this->config          = $config;
-		$this->userAccessToken = $userAccessToken;
+		parent::__construct( $config, $userAccessToken );
+
 		if( strlen( trim( $rootBasePath, ' \\/' ) ) > 0 ) {
 			$this->rootBasePath = trim( $rootBasePath, ' \\/' ) . '/';
 		}
@@ -86,7 +78,7 @@ class files {
 			return $driveItem;
 		}
 		catch( ClientException $e ) {
-			throw new serviceException( 'Folder not found', $e->getCode(), $e );
+			throw new serviceException( 'File not found', $e->getCode(), $e );
 		}
 		catch( GuzzleException $e ) {
 			throw new serviceException( 'Error getting files from Microsoft', 500, $e );
@@ -101,14 +93,21 @@ class files {
 	 * @param  string    $serverFullFilePath
 	 * @param  string    $fileName
 	 * @param  string[]  $uploadPathParts  Ex: [ '2021-0001', 'Building 1', 'Inspections' ] will turn into {root}/2021-0001/Building 1/Inspections
+	 * @param  string    $conflictBehavior The conflict resolution behavior for actions that create a new item. You can use the values fail, replace, or rename. The default for PUT is replace.
 	 *
 	 * @return \andrewsauder\microsoftServices\components\upload
 	 */
-	public function upload( string $serverFullFilePath, string $fileName, array $uploadPathParts ) : \andrewsauder\microsoftServices\components\upload {
+	public function upload( string $serverFullFilePath, string $fileName, array $uploadPathParts, string $conflictBehavior='replace' ) : \andrewsauder\microsoftServices\components\upload {
 		$response = new \andrewsauder\microsoftServices\components\upload();
 
 		//get or user application access token
-		$accessToken = $this->getMicrosoftAccessToken();
+		try {
+			$accessToken = $this->getMicrosoftAccessToken();
+		}
+		catch( serviceException $e ) {
+			$response->errors[] = 'Invalid configuration: '.$e->getMessage();
+			return $response;
+		}
 
 		//MICROSOFT UPLOAD
 		$graph = new \Microsoft\Graph\Graph();
@@ -121,13 +120,13 @@ class files {
 		try {
 			//if less than 4 mb, simple upload
 			if( $fileSize <= 4194304 ) {
-				$driveItem = $graph->createRequest( "PUT", $fileEndpoint . ":/content" )->attachBody( file_get_contents( $serverFullFilePath ) )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+				$driveItem = $graph->createRequest( "PUT", $fileEndpoint . ":/content?@microsoft.graph.conflictBehavior=".$conflictBehavior )->attachBody( file_get_contents( $serverFullFilePath ) )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
 			}
 			//larger than 4 mb, upload in chunks
 			else {
 				//1. create upload session
 				$graphBody = [
-					"@microsoft.graph.conflictBehavior" => "rename",
+					"@microsoft.graph.conflictBehavior" => $conflictBehavior,
 					"description"                       => "",
 					"fileSystemInfo"                    => [ "@odata.type" => "microsoft.graph.fileSystemInfo" ],
 					"name"                              => $fileName,
@@ -202,28 +201,6 @@ class files {
 		}
 
 		return $deleteRequest;
-	}
-
-
-	/**
-	 * @return string
-	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
-	 */
-	private function getMicrosoftAccessToken() : string {
-		$microsoftAuth = new auth( $this->config );
-
-
-		if( !$this->config->onBehalfOfFlow && isset( $this->userAccessToken ) ) {
-			return $this->userAccessToken;
-		}
-		//get OBO user access token
-		if( $this->config->onBehalfOfFlow && isset( $this->userAccessToken ) ) {
-			return (string) $microsoftAuth->getAccessToken( $this->userAccessToken );
-		}
-		//get access token
-		else {
-			return $microsoftAuth->getApplicationAccessToken();
-		}
 	}
 
 

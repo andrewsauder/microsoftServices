@@ -49,17 +49,17 @@ class auth {
 
 
 	/**
-	 * @return \andrewsauder\microsoftServices\components\tokenInfomation
+	 * @return \andrewsauder\microsoftServices\components\tokenInformation
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function verify() : \andrewsauder\microsoftServices\components\tokenInfomation {
+	public function verify() : \andrewsauder\microsoftServices\components\tokenInformation {
 		$suppliedToken = str_replace( 'Bearer ', '', $_SERVER[ 'HTTP_AUTHORIZATION' ] );
 		$token         = $this->getAccessToken( $suppliedToken );
 
 		$claims  = $token->getIdTokenClaims();
 		$expires = $token->getExpires();
 
-		$tokenInformation                     = new components\tokenInfomation();
+		$tokenInformation                     = new components\tokenInformation();
 		$tokenInformation->iss                = $claims[ 'iss' ] ?? '';
 		$tokenInformation->aud                = $claims[ 'aud' ] ?? '';
 		$tokenInformation->oid                = $claims[ 'oid' ] ?? '';

@@ -7,10 +7,8 @@ use GuzzleHttp\Exception\GuzzleException;
 use Microsoft\Graph\Exception\GraphException;
 
 
-class mail {
+class mail extends \andrewsauder\microsoftServices\components\service {
 
-	private \andrewsauder\microsoftServices\config $config;
-	private ?string $userAccessToken = null;
 	private array $attachments = [];
 
 
@@ -21,9 +19,7 @@ class mail {
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
 	public function __construct( \andrewsauder\microsoftServices\config $config, ?string $userAccessToken=null ) {
-		$config->validateForMail();
-		$this->config = $config;
-		$this->userAccessToken = $userAccessToken;
+		parent::__construct( $config, $userAccessToken );
 	}
 
 
@@ -117,27 +113,6 @@ class mail {
 			throw new serviceException( 'Failed to send email: '.$e->getMessage(), $e->getCode(), $e );
 		}
 		return $response;
-	}
-
-
-	/**
-	 * @return string
-	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
-	 */
-	private function getMicrosoftAccessToken() : string {
-		$microsoftAuth = new auth( $this->config );
-
-		if( !$this->config->onBehalfOfFlow && isset( $this->userAccessToken ) ) {
-			return $this->userAccessToken;
-		}
-		//get OBO user access token
-		if( $this->config->onBehalfOfFlow && isset( $this->userAccessToken ) ) {
-			return (string) $microsoftAuth->getAccessToken( $this->userAccessToken );
-		}
-		//get access token
-		else {
-			return $microsoftAuth->getApplicationAccessToken();
-		}
 	}
 
 }

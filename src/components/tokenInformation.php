@@ -3,7 +3,7 @@
 namespace andrewsauder\microsoftServices\components;
 
 
-class tokenInfomation {
+class tokenInformation {
 
 	public string $aud = '';
 
