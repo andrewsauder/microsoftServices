@@ -205,6 +205,41 @@ class files extends \andrewsauder\microsoftServices\components\service {
 
 
 	/**
+	 * @param  string    $folderName
+	 * @param  string[]  $basePathParts  Ex: [ '2021-0001', 'Building 1', 'Inspections' ] will turn into {root}/2021-0001/Building 1/Inspections
+	 *
+	 * @return \Microsoft\Graph\Model\DriveItem
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function createFolder( string $folderName, array $basePathParts=[] ) {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//Microsoft Delete
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+
+		$body = [
+			'name'                              => $folderName,
+			'folder'                            => (object) [],
+			'@microsoft.graph.conflictBehavior' => 'fail'
+		];
+
+		try {
+			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
+			$driveItem = $graph->createRequest( "POST", "/drives/" . $this->config->driveId . '/root:/' . $this->rootBasePath . implode( '/', $basePathParts ) . ":/children" )->attachBody( $body )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )
+			                      ->execute();
+		}
+		catch( \Exception|\GuzzleHttp\Exception\GuzzleException $e ) {
+			throw new serviceException( $this->rootBasePath . implode( '/', $basePathParts ) . '/' . $folderName . ' not created', 500, $e );
+		}
+
+		return $driveItem;
+	}
+
+
+	/**
 	 * @param          $accessToken
 	 * @param  string  $path
 	 *
@@ -219,7 +254,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 
 			//get all the project folders
 			/** @var \Microsoft\Graph\Model\DriveItem[] $driveItems */
-			$driveItems = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/root:/' . $this->rootBasePath . $path . ":/children" )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+			$driveItems = $graph->createRequest( "GET", '/drives/' . $this->config->driveId . '/root:/' . $this->rootBasePath . $path . ':/children' )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
 
 			foreach( $driveItems as $i => $driveItem ) {
 				if( $driveItem->getFolder() !== null ) {
