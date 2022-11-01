@@ -22,6 +22,8 @@ class files extends \andrewsauder\microsoftServices\components\service {
 	public function __construct( \andrewsauder\microsoftServices\config $config, ?string $userAccessToken = null, string $rootBasePath = '' ) {
 		parent::__construct( $config, $userAccessToken );
 
+		$config->validateForFiles();
+
 		if( strlen( trim( $rootBasePath, ' \\/' ) ) > 0 ) {
 			$this->rootBasePath = trim( $rootBasePath, ' \\/' ) . '/';
 		}
