@@ -217,4 +217,71 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 		}
 	}
 
+
+	/**
+	 * @param string $emailAddress
+	 * @param string $messageId
+	 *
+	 * @return \Microsoft\Graph\Model\Attachment[]
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function getAttachments( string $emailAddress, string $messageId ): array {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		try {
+			$attachmentIterator = $graph->createCollectionRequest( "GET", '/users/'.$emailAddress.'/messages/' . $messageId . "/attachments" )
+				->setReturnType( \Microsoft\Graph\Model\Attachment::class );
+
+			$attachments = $attachmentIterator->getPage();
+
+			while( !$attachmentIterator->isEnd() ) {
+				$attachments = array_merge( $attachments, $attachmentIterator->getPage() );
+			}
+
+			return $attachments;
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to send email: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to send email: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+	}
+
+
+	/**
+	 * @param string $emailAddress
+	 * @param string $messageId
+	 *
+	 * @return void
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function deleteMessage( string $emailAddress, string $messageId ): void {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		try {
+			$response = $graph->createCollectionRequest( 'DELETE', '/users/' . $emailAddress . '/messages/' . $messageId );
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to delete email message: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to delete email message: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+	}
+
 }
