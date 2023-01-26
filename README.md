@@ -2,6 +2,9 @@
 
 PHP wrapper for easy implementation of Microsoft Graph services
 
+## Requirement
+Version >=1.2 requires PHP >=8.1
+
 ## Installation
 
 `composer require andrewsauder/microsoft-services`
@@ -61,11 +64,19 @@ $deleteResponse = $microsoftFiles->delete( $itemId );
 ```
 
 ## Mail Usage
+If no user token is provided, the application token will be used.
+
+If the application token is being used, verify that the Azure application has correct Mail.X permissions for the email 
+address being used. To limit application access to only certain mailboxes, use ExchangeOnline Powershell to apply access
+policy. More info https://learn.microsoft.com/en-us/powershell/module/exchange/new-applicationaccesspolicy?view=exchange-ps
+
+If a user access token is provided when creating the service (`mail($config, 'user-access-token-string')`), verify that 
+the user has 'send on behalf' of or 'send as' permissions configured properly in Office 365. 
+
 
 ### Send Email
 
-If the from address is not provided, the default from address in the config will be used. If sending from a different
-account than the provided user token, make sure send on behalf of or send as permissions are defined in Office 365.
+If the from address is not provided, the default from address in the config will be used.
 
 ```php
 $microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
@@ -75,4 +86,38 @@ $rsp = $microsoftMail->send( 'to@example.com', 'Subject', 'HTML compatible messa
 if( $rsp->getStatus() < 200 || $rsp->getStatus() >= 300 ) {
     error_log( 'Failed' );
 }
+```
+
+
+### Get All Messages
+```php
+$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$messages = $microsoftMail->getAllMessages( 'joeschmoe@example.com' );
+```
+
+### Get All Messages from Specific Folder
+```php
+$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$messages = $microsoftMail->getMessagesInFolder( 'joeschmoe@example.com', 'mail-folder-id' );
+```
+
+
+### Get All Folders
+```php
+$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$folders = $microsoftMail->getFolders( 'joeschmoe@example.com' );
+```
+
+
+### Get Attachments for Message
+```php
+$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$attachments = $microsoftMail->getAttachments( 'joeschmoe@example.com', 'message-id' );
+```
+
+
+### Delete Message
+```php
+$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$graphResponse = $microsoftMail->deleteMessage( 'joeschmoe@example.com', 'message-id' );
 ```
