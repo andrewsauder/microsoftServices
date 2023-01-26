@@ -260,10 +260,10 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 	 * @param string $emailAddress
 	 * @param string $messageId
 	 *
-	 * @return void
+	 * @return \Microsoft\Graph\Http\GraphResponse
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function deleteMessage( string $emailAddress, string $messageId ): void {
+	public function deleteMessage( string $emailAddress, string $messageId ): \Microsoft\Graph\Http\GraphResponse {
 		//get application access token
 		$accessToken = $this->getMicrosoftAccessToken();
 
@@ -272,7 +272,8 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 		$graph->setAccessToken( $accessToken );
 
 		try {
-			$response = $graph->createCollectionRequest( 'DELETE', '/users/' . $emailAddress . '/messages/' . $messageId );
+			$response = $graph->createRequest( 'DELETE', '/users/' . $emailAddress . '/messages/' . $messageId )->execute();
+			return $response;
 		}
 		catch( GraphException $e ) {
 			error_log( $e );
