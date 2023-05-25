@@ -74,4 +74,36 @@ class user extends \andrewsauder\microsoftServices\components\service {
 		return $response;
 	}
 
+
+	/**
+	 * @param string $filter The filter command to pass into the MS Graph $filter url variable.
+	 *                       Ex: to run Graph command /users?$filter=startswith(userPrincipalName,'asauder')
+	 *                       pass just <i>startswith(userPrincipalName,'asauder')</i> to this function param
+	 *
+	 * @return \Microsoft\Graph\Model\User[]
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 * @see https://learn.microsoft.com/en-us/graph/filter-query-parameter?tabs=http
+	 *
+	 */
+	public function getUsersByFilter( string $filter ): array {
+		try {
+			//get application access token
+			$accessToken = $this->getMicrosoftAccessToken();
+
+			$graph = new \Microsoft\Graph\Graph();
+			$graph->setAccessToken( $accessToken );
+
+			$response = $graph->createRequest( 'GET', '/users?$filter=' . $filter )->setReturnType( \Microsoft\Graph\Model\User::class )->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to get user', $e->getCode(), $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to get user', $e->getCode(), $e );
+		}
+		return $response;
+	}
+
 }
