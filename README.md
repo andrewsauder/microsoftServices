@@ -79,7 +79,7 @@ the user has 'send on behalf' of or 'send as' permissions configured properly in
 If the from address is not provided, the default from address in the config will be used.
 
 ```php
-$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
 $microsoftMail->addAttachment( 'C:\tmp\testFile.txt' );
 $rsp = $microsoftMail->send( 'to@example.com', 'Subject', 'HTML compatible message', 'from@example.com' );
 
@@ -91,33 +91,62 @@ if( $rsp->getStatus() < 200 || $rsp->getStatus() >= 300 ) {
 
 ### Get All Messages
 ```php
-$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
 $messages = $microsoftMail->getAllMessages( 'joeschmoe@example.com' );
 ```
 
 ### Get All Messages from Specific Folder
 ```php
-$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
 $messages = $microsoftMail->getMessagesInFolder( 'joeschmoe@example.com', 'mail-folder-id' );
 ```
 
 
 ### Get All Folders
 ```php
-$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
 $folders = $microsoftMail->getFolders( 'joeschmoe@example.com' );
 ```
 
 
 ### Get Attachments for Message
 ```php
-$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
 $attachments = $microsoftMail->getAttachments( 'joeschmoe@example.com', 'message-id' );
 ```
 
 
 ### Delete Message
 ```php
-$microsoftMail = new \gcgov\framework\services\microsoft\mail( $config );
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
 $graphResponse = $microsoftMail->deleteMessage( 'joeschmoe@example.com', 'message-id' );
+```
+
+## User Usage
+
+### Get All Users in Organization
+
+```php
+$microsoftUserService = new \andrewsauder\microsoftServices\user( $config );
+$users = $microsoftUserService->allUsersInOrganization();
+```
+
+### Get User by User Principal Name
+```php
+$microsoftUserService = new \andrewsauder\microsoftServices\user( $config );
+$users = $microsoftUserService->getUserByUserPrincipalName( 'andrew@sauder.software' );
+```
+
+
+### Get User by External Id
+```php
+$microsoftUserService = new \andrewsauder\microsoftServices\user( $config );
+$users = $microsoftUserService->getUserByExternalId( '15bd6895-bf60-4125-a1d2-affb7e0de5d8' );
+```
+
+
+### Get Users By Advanced Filter
+```php
+$microsoftUserService = new \andrewsauder\microsoftServices\user( $config );
+$users = $microsoftUserService->getUsersByFilter( 'startswith(userPrincipalName,"andrew")' );
 ```
