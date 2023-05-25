@@ -78,7 +78,7 @@ class user extends \andrewsauder\microsoftServices\components\service {
 	/**
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function getUserByExternalId( string $externalId ): \Microsoft\Graph\Model\User {
+	public function getUserById( string $externalId ): \Microsoft\Graph\Model\User {
 		return $this->getUserByUserPrincipalName( $externalId );
 	}
 

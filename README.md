@@ -138,14 +138,15 @@ $users = $microsoftUserService->getUserByUserPrincipalName( 'andrew@sauder.softw
 ```
 
 
-### Get User by External Id
+### Get User by Id
 ```php
 $microsoftUserService = new \andrewsauder\microsoftServices\user( $config );
-$users = $microsoftUserService->getUserByExternalId( '15bd6895-bf60-4125-a1d2-affb7e0de5d8' );
+$users = $microsoftUserService->getUserById( '15bd6895-bf60-4125-a1d2-affb7e0de5d8' );
 ```
 
 
 ### Get Users By Advanced Filter
+See https://learn.microsoft.com/en-us/graph/filter-query-parameter?tabs=http for filter details
 ```php
 $microsoftUserService = new \andrewsauder\microsoftServices\user( $config );
 $users = $microsoftUserService->getUsersByFilter( 'startswith(userPrincipalName,"andrew")' );
