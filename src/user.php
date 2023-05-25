@@ -85,7 +85,7 @@ class user extends \andrewsauder\microsoftServices\components\service {
 
 	/**
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
-	 * @deprecated use getUserByUserPrincipalName instead. This function has always operate on UPN, not email. Preserved in v2 for backwards compatibility only. Will be removed in v3 or changed to actually search for user by mail attribute
+	 * @deprecated use getUserByUserPrincipalName instead. This function has always operate on UPN, not email. Preserved in v1 for backwards compatibility only. Will be removed in v2 or changed to actually search for user by mail attribute
 	 */
 	public function getUserByEmail( string $email ): \Microsoft\Graph\Model\User {
 		return $this->getUserByUserPrincipalName( $email );
