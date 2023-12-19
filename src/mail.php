@@ -118,6 +118,174 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 
 
 	/**
+	 * @param string|string[] $to
+	 * @param string          $subject
+	 * @param string          $content
+	 * @param string          $from
+	 *
+	 * @return \Microsoft\Graph\Model\Message
+	 *
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function createDraft( string|array $to, string $subject, string $content, string $from, string|array $cc = [], string|array $bcc = [] ): \Microsoft\Graph\Model\Message {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		$toRecipients = [];
+		if( !is_array( $to ) ) {
+			$to = [ $to ];
+		}
+		foreach( $to as $emailAddress ) {
+			$toRecipients[] = [
+				'emailAddress' => [
+					'address' => $emailAddress
+				]
+			];
+		}
+
+		$ccRecipients = [];
+		if( !is_array( $cc ) ) {
+			$cc = [ $cc ];
+		}
+		foreach( $cc as $emailAddress ) {
+			$ccRecipients[] = [
+				'emailAddress' => [
+					'address' => $emailAddress
+				]
+			];
+		}
+
+		$bccRecipients = [];
+		if( !is_array( $bcc ) ) {
+			$bcc = [ $bcc ];
+		}
+		foreach( $bcc as $emailAddress ) {
+			$bccRecipients[] = [
+				'emailAddress' => [
+					'address' => $emailAddress
+				]
+			];
+		}
+
+		if( $from=='' ) {
+			$from = $this->config->fromAddress;
+		}
+
+		$mailBody = [
+			'subject'       => $subject,
+			'body'          => [
+				'contentType' => 'HTML',
+				'content'     => $content
+			],
+			'from'          => [
+				'emailAddress' => [
+					'address' => $from
+				]
+			],
+			'toRecipients'  => $toRecipients,
+			'ccRecipients'  => $ccRecipients,
+			'bccRecipients' => $bccRecipients
+		];
+
+		if( count( $this->attachments )>0 ) {
+			$mailBody[ 'Message' ][ 'attachments' ] = $this->attachments;
+		}
+
+		$headers = [
+			'Prefer' => 'IdType="ImmutableId"'
+		];
+
+		try {
+			$message = $graph->createRequest( 'POST', '/users/' . $from . '/messages' )
+			                 ->setReturnType( \Microsoft\Graph\Model\Message::class )
+			                 ->addHeaders( $headers )
+			                 ->attachBody( $mailBody )
+			                 ->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to create draft: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to create draft: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+
+		return $message;
+	}
+
+
+	/**
+	 * @param string|string[] $to
+	 * @param string          $subject
+	 * @param string          $content
+	 * @param string          $from
+	 *
+	 * @return \Microsoft\Graph\Model\Message
+	 *
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function getMessage( string $messageId, string $from ): \Microsoft\Graph\Model\Message {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		$headers = [
+			'Prefer' => 'IdType="ImmutableId"'
+		];
+
+		try {
+			$message = $graph->createRequest( 'GET', '/users/' . $from . '/messages/' . $messageId )
+			                 ->setReturnType( \Microsoft\Graph\Model\Message::class )
+			                 ->addHeaders( $headers )
+			                 ->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to create draft: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to create draft: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+
+		return $message;
+	}
+
+
+	public function sendDraft( string $messageId, string $from ): \Microsoft\Graph\Http\GraphResponse {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		try {
+			$response = $graph->createRequest( 'POST', '/users/' . $from . '/messages/' . $messageId . '/send' )
+			                  ->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to create draft: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to create draft: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+
+		return $response;
+	}
+
+
+	/**
 	 * @param string                                              $emailAddress
 	 * @param \andrewsauder\microsoftServices\mail\headers\prefer $preferHeader [optional] Defaults to html
 	 *
@@ -138,7 +306,7 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
 	public function getMessagesInFolder( string $emailAddress, string $mailFolderId, \andrewsauder\microsoftServices\mail\headers\prefer $preferHeader = \andrewsauder\microsoftServices\mail\headers\prefer::HTML ): array {
-		return $this->listMessages( '/users/' . $emailAddress . '/mailFolder/' . $mailFolderId . '/messages', $preferHeader );
+		return $this->listMessages( '/users/' . $emailAddress . '/mailFolders/' . $mailFolderId . '/messages', $preferHeader );
 	}
 
 
@@ -164,7 +332,7 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 
 		try {
 			$iterator = $graph->createCollectionRequest( 'GET', $url )
-				->setReturnType( \Microsoft\Graph\Model\MailFolder::class );
+			                  ->setReturnType( \Microsoft\Graph\Model\MailFolder::class );
 			$folders  = $iterator->getPage();
 			while( !$iterator->isEnd() ) {
 				$folders = array_merge( $folders, $iterator->getPage() );
@@ -199,8 +367,8 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 
 		try {
 			$messageIterator = $graph->createCollectionRequest( 'GET', $url )
-				->setReturnType( \Microsoft\Graph\Model\Message::class )
-				->addHeaders( [ 'Prefer' => "outlook.body-content-type='" . $preferHeader->value . "'" ] );
+			                         ->setReturnType( \Microsoft\Graph\Model\Message::class )
+			                         ->addHeaders( [ 'Prefer' => 'outlook.body-content-type="' . $preferHeader->value . '", IdType="ImmutableId"' ] );
 			$messages        = $messageIterator->getPage();
 			while( !$messageIterator->isEnd() ) {
 				$messages = array_merge( $messages, $messageIterator->getPage() );
@@ -234,8 +402,8 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 		$graph->setAccessToken( $accessToken );
 
 		try {
-			$attachmentIterator = $graph->createCollectionRequest( "GET", '/users/'.$emailAddress.'/messages/' . $messageId . "/attachments" )
-				->setReturnType( \Microsoft\Graph\Model\Attachment::class );
+			$attachmentIterator = $graph->createCollectionRequest( "GET", '/users/' . $emailAddress . '/messages/' . $messageId . "/attachments" )
+			                            ->setReturnType( \Microsoft\Graph\Model\Attachment::class );
 
 			$attachments = $attachmentIterator->getPage();
 
