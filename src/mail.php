@@ -192,7 +192,7 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 		];
 
 		if( count( $this->attachments )>0 ) {
-			$mailBody[ 'Message' ][ 'attachments' ] = $this->attachments;
+			$mailBody[ 'attachments' ] = $this->attachments;
 		}
 
 		$headers = [
