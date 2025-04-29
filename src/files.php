@@ -4,8 +4,8 @@ namespace andrewsauder\microsoftServices;
 use andrewsauder\microsoftServices\exceptions\serviceException;
 use GuzzleHttp\Exception\ClientException;
 use GuzzleHttp\Exception\GuzzleException;
+use JetBrains\PhpStorm\Deprecated;
 use Microsoft\Graph\Exception\GraphException;
-
 
 class files extends \andrewsauder\microsoftServices\components\service {
 
@@ -36,13 +36,44 @@ class files extends \andrewsauder\microsoftServices\components\service {
 	 * @return \Microsoft\Graph\Model\DriveItem[]
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function list( array $microsoftPathParts=[] ) : array {
+	public function list( array $microsoftPathParts=[], bool $recursive=true ) : array {
 		//get application access token
 		$accessToken = $this->getMicrosoftAccessToken();
 
 		//get file list
 		try {
-			$driveItems = $this->getMicrosoftDriveItems( $accessToken, implode( '/', $microsoftPathParts ) );
+			$driveItems = $this->getMicrosoftDriveItems( $accessToken, implode( '/', $microsoftPathParts ), $recursive );
+		}
+		catch( serviceException $e ) {
+			//if the error is that the folder doesn't exist, try to create it
+			if( $e->getCode() == 404 ) {
+				//generate the folders recursively
+				//$newDriveItems = $this->createMicrosoftDirectories( $accessToken, $microsoftPathParts );
+				//try to get the files again
+				//$driveItems = $this->getMicrosoftDriveItems( $accessToken, implode( '/', $microsoftPathParts ) );
+				$driveItems = [];
+			}
+			else {
+				throw new serviceException( $e->getMessage(), $e->getCode(), $e );
+			}
+		}
+
+		return $driveItems;
+	}
+
+	/**
+	 * @param  string $id
+	 *
+	 * @return \Microsoft\Graph\Model\DriveItem[]
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function listById( string $id, bool $recursive=true ) : array {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		try {
+			$driveItems = $this->getMicrosoftDriveItemsById( $accessToken, $id, $recursive );
 		}
 		catch( serviceException $e ) {
 			//if the error is that the folder doesn't exist, try to create it
@@ -65,7 +96,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 	/**
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function getFile( array $microsoftPathParts ) : \Microsoft\Graph\Model\DriveItem {
+	public function getDriveItem( array $microsoftPathParts ) : \Microsoft\Graph\Model\DriveItem {
 		//get application access token
 		$accessToken = $this->getMicrosoftAccessToken();
 
@@ -89,6 +120,91 @@ class files extends \andrewsauder\microsoftServices\components\service {
 			throw new serviceException( $e->getMessage(), 500, $e );
 		}
 	}
+
+	#[Deprecated('Renamed method', '%class%->getDriveItem()')]
+	public function getFile( array $microsoftPathParts ) : \Microsoft\Graph\Model\DriveItem {
+		return $this->getDriveItem( $microsoftPathParts );
+	}
+
+
+	/**
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function getDriveItemById( string $itemId ) : \Microsoft\Graph\Model\DriveItem {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		try {
+			$graph = new \Microsoft\Graph\Graph();
+			$graph->setAccessToken( $accessToken );
+
+			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
+			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/root:/' . $itemId )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+
+			return $driveItem;
+		}
+		catch( ClientException $e ) {
+			throw new serviceException( 'File not found', $e->getCode(), $e );
+		}
+		catch( GuzzleException $e ) {
+			throw new serviceException( 'Error getting files from Microsoft', 500, $e );
+		}
+		catch( GraphException $e ) {
+			throw new serviceException( $e->getMessage(), 500, $e );
+		}
+	}
+
+	/**
+	 * @param string $itemId Microsoft file id
+	 * @param string $tmpPath Path to download the file into
+	 *
+	 * @return string File path name to tmp local copy of file
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function downloadDriveItemById( string $itemId, string $tmpPath='' ): string {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		try {
+			$graph = new \Microsoft\Graph\Graph();
+			$graph->setAccessToken( $accessToken );
+
+			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
+			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/items/' . $itemId )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+
+			//download the file, store it temporarily, serve it to user, delete file
+			$path = rtrim( $tmpPath, '/' ) . '/' . $itemId;
+			if(!file_exists($tmpPath)) {
+				mkdir($tmpPath);
+			}
+			if(!file_exists($path)) {
+				mkdir($path);
+			}
+			$filePathName = $path . '/' . $driveItem->getName();
+
+			if(file_exists($filePathName)) {
+				return $filePathName;
+			}
+
+			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
+			$graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/items/' . $itemId . '/content' )
+			      ->download( $filePathName );
+
+			return $filePathName;
+		}
+		catch( ClientException $e ) {
+			throw new serviceException( 'File not found', $e->getCode(), $e );
+		}
+		catch( GuzzleException $e ) {
+			throw new serviceException( 'Error getting files from Microsoft', 500, $e );
+		}
+		catch( GraphException $e ) {
+			throw new serviceException( $e->getMessage(), 500, $e );
+		}
+	}
+
 
 
 	/**
@@ -152,8 +268,28 @@ class files extends \andrewsauder\microsoftServices\components\service {
 		}
 	}
 
-
 	/**
+	 * @param  string    $base64EncodedContent
+	 * @param  string    $contentType
+	 * @param  string    $fileName
+	 * @param  string[]  $uploadPathParts  Ex: [ '2021-0001', 'Building 1', 'Inspections' ] will turn into {root}/2021-0001/Building 1/Inspections
+	 * @param  string    $conflictBehavior The conflict resolution behavior for actions that create a new item. You can use the values fail, replace, or rename. The default for PUT is replace.
+	 *
+	 * @return \andrewsauder\microsoftServices\components\upload
+	 */
+	public function uploadBase64EncodedContent( string $base64EncodedContent, string $contentType, string $fileName, array $uploadPathParts=[], string $conflictBehavior='replace' ) : \andrewsauder\microsoftServices\components\upload {
+		$tempFileName = tempnam(sys_get_temp_dir(), 'MicrosoftServicesFile');
+		file_put_contents($tempFileName, base64_decode($base64EncodedContent));
+		if($tempFileName===false) {
+			$response = new \andrewsauder\microsoftServices\components\upload();
+			$response->errors[] = 'Unable to write to tmp directory at '.sys_get_temp_dir();
+			return $response;
+		}
+
+		return $this->upload( $tempFileName, $fileName, $uploadPathParts, $conflictBehavior );
+	}
+
+		/**
 	 * @param  string    $serverFullFilePath
 	 * @param  string    $fileName
 	 * @param  string[]  $uploadPathParts  Ex: [ '2021-0001', 'Building 1', 'Inspections' ] will turn into {root}/2021-0001/Building 1/Inspections
@@ -310,7 +446,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 	 * @return \Microsoft\Graph\Model\DriveItem[]
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	private function getMicrosoftDriveItems( $accessToken, string $path ) : array {
+	private function getMicrosoftDriveItems( $accessToken, string $path, bool $recursive=true ) : array {
 		//get file list
 		try {
 			$graph = new \Microsoft\Graph\Graph();
@@ -320,10 +456,53 @@ class files extends \andrewsauder\microsoftServices\components\service {
 			/** @var \Microsoft\Graph\Model\DriveItem[] $driveItems */
 			$driveItems = $graph->createRequest( "GET", '/drives/' . $this->config->driveId . '/root:/' . $this->rootBasePath . $path . ':/children' )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
 
-			foreach( $driveItems as $i => $driveItem ) {
-				if( $driveItem->getFolder() !== null ) {
-					$children = $this->getMicrosoftDriveItems( $accessToken, $path . '/' . $driveItem->getName() );
-					$driveItems[ $i ]->setChildren( $children );
+			if($recursive) {
+				foreach( $driveItems as $i => $driveItem ) {
+					if( $driveItem->getFolder() !== null ) {
+						$children = $this->getMicrosoftDriveItems( $accessToken, $path . '/' . $driveItem->getName() );
+						$driveItems[ $i ]->setChildren( $children );
+					}
+				}
+			}
+
+			return $driveItems;
+		}
+		catch( ClientException $e ) {
+			throw new serviceException( 'Folder not found', $e->getCode(), $e );
+		}
+		catch( GuzzleException $e ) {
+			throw new serviceException( 'Error getting files from Microsoft', 500, $e );
+		}
+		catch( GraphException $e ) {
+			throw new serviceException( $e->getMessage(), 500, $e );
+		}
+	}
+
+
+	/**
+	 * @param          $accessToken
+	 * @param string   $id
+	 * @param bool     $recursive
+	 *
+	 * @return \Microsoft\Graph\Model\DriveItem[]
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	private function getMicrosoftDriveItemsById( $accessToken, string $id, bool $recursive=true ) : array {
+		//get file list
+		try {
+			$graph = new \Microsoft\Graph\Graph();
+			$graph->setAccessToken( $accessToken );
+
+			//get all the project folders
+			/** @var \Microsoft\Graph\Model\DriveItem[] $driveItems */
+			$driveItems = $graph->createRequest( "GET", '/drives/' . $this->config->driveId . '/items/' . $id . '/children' )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+
+			if($recursive) {
+				foreach( $driveItems as $i => $driveItem ) {
+					if( $driveItem->getFolder() !== null ) {
+						$children = $this->getMicrosoftDriveItemsById( $accessToken, $driveItem->getId() );
+						$driveItems[ $i ]->setChildren( $children );
+					}
 				}
 			}
 
