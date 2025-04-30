@@ -105,8 +105,13 @@ class files extends \andrewsauder\microsoftServices\components\service {
 			$graph = new \Microsoft\Graph\Graph();
 			$graph->setAccessToken( $accessToken );
 
+			$endpoint = "/drives/" . $this->config->driveId . '/root';
+			if(count($microsoftPathParts)>0) {
+				$endpoint = "/drives/" . $this->config->driveId . '/root:/' . $this->rootBasePath . implode( '/', $microsoftPathParts );
+			}
+
 			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
-			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/root:/' . $this->rootBasePath . implode( '/', $microsoftPathParts ) )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/root:/' . $endpoint )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
 
 			return $driveItem;
 		}
@@ -464,8 +469,12 @@ class files extends \andrewsauder\microsoftServices\components\service {
 		];
 
 		try {
+			$endpoint = "/drives/" . $this->config->driveId . '/root/children';
+			if(count($basePathParts)>0) {
+				$endpoint = "/drives/" . $this->config->driveId . '/root:/' . $this->rootBasePath . implode( '/', $basePathParts ) . ":/children";
+			}
 			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
-			$driveItem = $graph->createRequest( "POST", "/drives/" . $this->config->driveId . '/root:/' . $this->rootBasePath . implode( '/', $basePathParts ) . ":/children" )->attachBody( $body )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )
+			$driveItem = $graph->createRequest( "POST", $endpoint )->attachBody( $body )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )
 			                      ->execute();
 		}
 		catch( \Exception|\GuzzleHttp\Exception\GuzzleException $e ) {
