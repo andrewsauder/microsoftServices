@@ -140,9 +140,46 @@ class files extends \andrewsauder\microsoftServices\components\service {
 			$graph->setAccessToken( $accessToken );
 
 			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
-			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/root:/' . $itemId )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/items/' . $itemId )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
 
 			return $driveItem;
+		}
+		catch( ClientException $e ) {
+			throw new serviceException( 'File not found', $e->getCode(), $e );
+		}
+		catch( GuzzleException $e ) {
+			throw new serviceException( 'Error getting files from Microsoft', 500, $e );
+		}
+		catch( GraphException $e ) {
+			throw new serviceException( $e->getMessage(), 500, $e );
+		}
+	}
+
+
+	/**
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function getDriveItemPreviewById( string $itemId, ?int $pageNumber=null, ?int $zoom=null ) : \Microsoft\Graph\Model\ItemPreviewInfo {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		try {
+			$graph = new \Microsoft\Graph\Graph();
+			$graph->setAccessToken( $accessToken );
+
+			$requestBody = [];
+			if(!empty($pageNumber)) {
+				$requestBody["pageNumber"] = $pageNumber;
+			}
+			if(!empty($zoom)) {
+				$requestBody["zoom"] = $zoom;
+			}
+
+			/** @var \Microsoft\Graph\Model\ItemPreviewInfo $previewInfo */
+			$previewInfo = $graph->createRequest( "POST", "/drives/" . $this->config->driveId . '/items/' . $itemId.'/preview' )->attachBody( $requestBody )->setReturnType( \Microsoft\Graph\Model\ItemPreviewInfo::class )->execute();
+
+			return $previewInfo;
 		}
 		catch( ClientException $e ) {
 			throw new serviceException( 'File not found', $e->getCode(), $e );
