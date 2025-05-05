@@ -111,7 +111,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 			}
 
 			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
-			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/root:/' . $endpoint )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+			$driveItem = $graph->createRequest( "GET", $endpoint )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
 
 			return $driveItem;
 		}
