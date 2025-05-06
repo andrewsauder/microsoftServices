@@ -214,7 +214,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 			$graph->setAccessToken( $accessToken );
 
 			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
-			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/items/' . $itemId )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/items/' . $itemId.'?select=@microsoft.graph.downloadUrl' )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
 
 			//download the file, store it temporarily, serve it to user, delete file
 			$path = rtrim( $tmpPath, '/' ) . '/' . $itemId;
@@ -602,6 +602,40 @@ class files extends \andrewsauder\microsoftServices\components\service {
 		}
 
 		return $driveItems;
+	}
+
+	public static function sanitizeFileFolderName(string $name) {
+		// Step 1: Remove forbidden characters
+		$forbiddenChars = ['~', '#', '%', '&', '*', '{', '}', '\\', ':', '<', '>', '?', '/', '+', '|', '"'];
+		$name = str_replace($forbiddenChars, '', $name);
+
+		// Step 2: Replace multiple consecutive periods with a single one
+		$name = preg_replace('/\.{2,}/', '.', $name);
+
+		// Step 3a: Remove leading or trailing periods and spaces
+		$name = trim($name, '. ');
+
+		// Step 4: List of disallowed suffixes (case-insensitive)
+		$disallowedSuffixes = [
+			'.files', '_files', '-Dateien', '_fichiers', '_bestanden', '_file', '_archivos',
+			'-filer', '_tiedostot', '_pliki', '_soubory', '_elemei', '_ficheiros', '_arquivos',
+			'_dosyalar', '_datoteke', '_fitxers', '_failid', '_fails', '_bylos', '_fajlovi', '_fitxategiak'
+		];
+
+		// Step 5: Check and remove disallowed suffixes
+		foreach ($disallowedSuffixes as $suffix) {
+			if (str_ends_with(strtolower($name), strtolower($suffix))) {
+				$name = substr($name, 0, -strlen($suffix));
+				break;
+			}
+		}
+
+		// Step 6: If name is empty after sanitization, assign a default
+		if ($name === '') {
+			$name = bin2hex(openssl_random_pseudo_bytes(10));;
+		}
+
+		return $name;
 	}
 
 }

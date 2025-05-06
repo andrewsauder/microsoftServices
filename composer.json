@@ -12,7 +12,8 @@
 	"microsoft/microsoft-graph": "^1.110",
 	"guzzlehttp/guzzle": "^7.9",
 	"thenetworg/oauth2-azure": "^2.0",
-	"ext-fileinfo": "*"
+	"ext-fileinfo": "*",
+	"ext-openssl": "*"
   },
   "config": {
     "allow-plugins": {
