@@ -197,6 +197,35 @@ class files extends \andrewsauder\microsoftServices\components\service {
 		}
 	}
 
+
+	/**
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function getDriveItemThumbnailById( string $itemId, int $thumbnailId=0, string $size='medium' ): \Microsoft\Graph\Model\Thumbnail {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		try {
+			$graph = new \Microsoft\Graph\Graph();
+			$graph->setAccessToken( $accessToken );
+
+			/** @var \Microsoft\Graph\Model\Thumbnail $thumbnail */
+			$thumbnail = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/items/' . $itemId.'/thumbnails/'.$thumbnailId.'/'.$size )->setReturnType( \Microsoft\Graph\Model\Thumbnail::class )->execute();
+
+			return $thumbnail;
+		}
+		catch( ClientException $e ) {
+			throw new serviceException( 'File not found', $e->getCode(), $e );
+		}
+		catch( GuzzleException $e ) {
+			throw new serviceException( 'Error getting files from Microsoft', 500, $e );
+		}
+		catch( GraphException $e ) {
+			throw new serviceException( $e->getMessage(), 500, $e );
+		}
+	}
+
 	/**
 	 * @param string $itemId Microsoft file id
 	 * @param string $tmpPath Path to download the file into
@@ -214,7 +243,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 			$graph->setAccessToken( $accessToken );
 
 			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
-			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/items/' . $itemId.'?select=@microsoft.graph.downloadUrl' )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+			$driveItem = $graph->createRequest( "GET", "/drives/" . $this->config->driveId . '/items/' . $itemId.'?select=id,name,@microsoft.graph.downloadUrl' )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
 
 			//download the file, store it temporarily, serve it to user, delete file
 			$path = rtrim( $tmpPath, '/' ) . '/' . $itemId;
