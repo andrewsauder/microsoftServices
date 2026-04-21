@@ -36,7 +36,7 @@ class calendar extends \andrewsauder\microsoftServices\components\service {
 
 		try {
 
-			$iterator = $graph->createCollectionRequest( 'GET', '/users/' . $emailAddress . '/calendars' )
+			$iterator = $graph->createCollectionRequest( 'GET', '/users/' . $calendarOwner . '/calendars' )
 			                  ->setReturnType( \Microsoft\Graph\Model\Calendar::class );
 			$calendars  = $iterator->getPage();
 			while( !$iterator->isEnd() ) {
