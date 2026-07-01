@@ -339,6 +339,49 @@ class files extends \andrewsauder\microsoftServices\components\service {
 		}
 	}
 
+
+	/**
+	 * Apply a partial update to a drive item in a single Graph PATCH. Supports renaming and/or moving in one
+	 * request. Accepts a raw driveItem patch body, eg [ 'name' => 'new-name.txt' ] and/or
+	 * [ 'parentReference' => [ 'id' => '{destinationFolderItemId}' ] ].
+	 *
+	 * @param  string                                $itemId          Microsoft drive item id
+	 * @param  array<string, mixed>                  $driveItemPatch  Partial driveItem body
+	 *
+	 * @return \Microsoft\Graph\Model\DriveItem
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function update( string $itemId, array $driveItemPatch ) : \Microsoft\Graph\Model\DriveItem {
+		//nothing to change - return the item as-is rather than issuing an empty PATCH (Graph rejects it as 400)
+		if( count( $driveItemPatch ) === 0 ) {
+			return $this->getDriveItemById( $itemId );
+		}
+
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		try {
+			$graph = new \Microsoft\Graph\Graph();
+			$graph->setAccessToken( $accessToken );
+
+			/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
+			$driveItem = $graph->createRequest( "PATCH", "/drives/" . $this->config->driveId . "/items/" . $itemId )
+				->attachBody( $driveItemPatch )
+				->setReturnType( \Microsoft\Graph\Model\DriveItem::class )->execute();
+
+			return $driveItem;
+		}
+		catch( ClientException $e ) {
+			throw new serviceException( $e->getMessage(), $e->getCode(), $e );
+		}
+		catch( GuzzleException $e ) {
+			throw new serviceException( 'Error communicating with storage provider', 500, $e );
+		}
+		catch( GraphException $e ) {
+			throw new serviceException( $e->getMessage(), 500, $e );
+		}
+	}
+
 	/**
 	 * @param  string    $base64EncodedContent
 	 * @param  string    $contentType
