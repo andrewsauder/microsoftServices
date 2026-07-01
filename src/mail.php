@@ -453,4 +453,38 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 		}
 	}
 
+
+	/**
+	 * @param string $emailAddress
+	 * @param string $messageId
+	 * @param string $mailFolderId
+	 *
+	 * @return \Microsoft\Graph\Http\GraphResponse
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function moveMessage( string $emailAddress, string $messageId, string $mailFolderId ): \Microsoft\Graph\Http\GraphResponse {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		//get file list
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		try {
+			$body = [
+				'destinationId' => $mailFolderId,
+			];
+			$response = $graph->createRequest( 'POST', '/users/' . $emailAddress . '/messages/' . $messageId .'/move' )->attachBody( $body )->execute();
+			return $response;
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to delete email message: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to delete email message: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+	}
+
 }
