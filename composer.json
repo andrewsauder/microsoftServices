@@ -1,24 +1,43 @@
 {
-  "name": "andrewsauder/microsoft-services",
-  "description": "PHP wrapper for easy implementation of Microsoft Graph services",
-  "license": "MIT",
-  "autoload": {
-	"psr-4": {
-	  "andrewsauder\\microsoftServices\\": "src/"
+	"name": "andrewsauder/microsoft-services",
+	"description": "PHP wrapper for easy implementation of Microsoft Graph services",
+	"license": "MIT",
+	"autoload": {
+		"psr-4": {
+			"andrewsauder\\microsoftServices\\": "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"andrewsauder\\microsoftServices\\tests\\": "tests/"
+		}
+	},
+	"require": {
+		"php": ">=8.2",
+		"microsoft/microsoft-graph": "^1.110",
+		"guzzlehttp/guzzle": "^7.9",
+		"thenetworg/oauth2-azure": "^2.0",
+		"ext-fileinfo": "*",
+		"ext-openssl": "*"
+	},
+	"config": {
+		"allow-plugins": {
+			"php-http/discovery": true,
+			"tbachert/spi": true,
+			"phpstan/extension-installer": true
+		}
+	},
+	"require-dev": {
+		"phpstan/phpstan": "^2.1",
+		"phpunit/phpunit": "^11.5",
+		"jetbrains/phpstorm-attributes": "^1.0"
+	},
+	"scripts": {
+		"phpstan": "phpstan analyse --memory-limit=512M",
+		"test": "phpunit",
+		"ci": [
+			"@phpstan",
+			"@test"
+		]
 	}
-  },
-  "require": {
-	"php": ">=8.2",
-	"microsoft/microsoft-graph": "^1.110",
-	"guzzlehttp/guzzle": "^7.9",
-	"thenetworg/oauth2-azure": "^2.0",
-	"ext-fileinfo": "*",
-	"ext-openssl": "*"
-  },
-  "config": {
-    "allow-plugins": {
-      "php-http/discovery": true,
-      "tbachert/spi": true
-    }
-  }
 }

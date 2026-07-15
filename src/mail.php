@@ -220,10 +220,8 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 
 
 	/**
-	 * @param string|string[] $to
-	 * @param string          $subject
-	 * @param string          $content
-	 * @param string          $from
+	 * @param string $messageId
+	 * @param string $from
 	 *
 	 * @return \Microsoft\Graph\Model\Message
 	 *

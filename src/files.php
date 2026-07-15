@@ -474,7 +474,7 @@ class files extends \andrewsauder\microsoftServices\components\service {
 							"Content-Length" => $numBytes,
 							"Content-Range"  => $content_range
 						];
-						$uploadByte     = $graph->createRequest( "PUT", $graphUrl )->addHeaders( $headers )->attachBody( $data )->setReturnType( \Microsoft\Graph\Model\UploadSession::class )->setTimeout( "1000" )->execute();
+						$uploadByte     = $graph->createRequest( "PUT", $graphUrl )->addHeaders( $headers )->attachBody( $data )->setReturnType( \Microsoft\Graph\Model\UploadSession::class )->setTimeout( 1000 )->execute();
 						$bytesRemaining = $bytesRemaining - $chunkSize;
 						$i++;
 					}
@@ -637,44 +637,6 @@ class files extends \andrewsauder\microsoftServices\components\service {
 		}
 	}
 
-
-	/**
-	 * @param            $accessToken
-	 * @param  string[]  $basePath
-	 *
-	 * @return \Microsoft\Graph\Model\DriveItem[]
-	 */
-	private function createMicrosoftDirectories( $accessToken, array $basePath ) : array {
-		$driveItems = [];
-
-		$graph = new \Microsoft\Graph\Graph();
-		$graph->setAccessToken( $accessToken );
-
-		$path = '';
-		foreach( $basePath as $i => $directoryName ) {
-			$body = [
-				'name'                              => $directoryName,
-				'folder'                            => (object) [],
-				'@microsoft.graph.conflictBehavior' => 'fail'
-			];
-
-			try {
-				/** @var \Microsoft\Graph\Model\DriveItem $driveItem */
-				$driveItems[] = $graph->createRequest( "POST", "/drives/" . $this->config->driveId . '/root:/' . $this->rootBasePath . $path . ":/children" )->attachBody( $body )->setReturnType( \Microsoft\Graph\Model\DriveItem::class )
-				                      ->execute();
-			}
-			catch( \Exception|\GuzzleHttp\Exception\GuzzleException $e ) {
-				error_log( $path . '/' . $directoryName . ' not created - already exists?' );
-				error_log( $e );
-			}
-
-			//build out the path with each iteration since the array is the directory structure
-			//ie if $basePath array = [ parent folder, child folder, grandchild folder ], $path becomes "/parent folder/child folder" after the second index
-			$path .= '/' . $directoryName;
-		}
-
-		return $driveItems;
-	}
 
 	public static function sanitizeFileFolderName(string $name) {
 		// Step 1: Remove forbidden characters

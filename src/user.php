@@ -8,8 +8,6 @@ use Microsoft\Graph\Exception\GraphException;
 
 class user extends \andrewsauder\microsoftServices\components\service {
 
-	private array $attachments = [];
-
 
 	/**
 	 * @param string|null $userAccessToken    Provide user token. If config.onBehalfOfFlow is enabled, the provided token will be exchanged for an access token for this API. If config.onBehalfOfFlow is not enabled, this token will be used

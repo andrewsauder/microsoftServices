@@ -6,7 +6,6 @@ namespace andrewsauder\microsoftServices;
 use andrewsauder\microsoftServices\exceptions\serviceException;
 use GuzzleHttp\Exception\GuzzleException;
 
-
 class auth {
 
 	private \andrewsauder\microsoftServices\config   $config;
@@ -27,16 +26,15 @@ class auth {
 	/**
 	 * @param  string  $suppliedToken
 	 *
-	 * @return \League\OAuth2\Client\Token\AccessTokenInterface|\League\OAuth2\Client\Token\AccessToken
+	 * @return \TheNetworg\OAuth2\Client\Token\AccessToken
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function getAccessToken( string $suppliedToken ) : \League\OAuth2\Client\Token\AccessTokenInterface|\League\OAuth2\Client\Token\AccessToken {
+	public function getAccessToken( string $suppliedToken ) : \TheNetworg\OAuth2\Client\Token\AccessToken {
 		$this->provider->defaultEndPointVersion = \TheNetworg\OAuth2\Client\Provider\Azure::ENDPOINT_VERSION_2_0;
 		$this->provider->scope                  = $this->config->scope;
 
 		try {
-			/** @var \TheNetworg\OAuth2\Client\Token\AccessToken $token */
-			return $this->provider->getAccessToken( 'jwt_bearer', [
+			$token = $this->provider->getAccessToken( 'jwt_bearer', [
 				'scope'               => $this->provider->scope,
 				'assertion'           => $suppliedToken,
 				'requested_token_use' => 'on_behalf_of',
@@ -45,6 +43,14 @@ class auth {
 		catch( \Exception $e ) {
 			throw new \andrewsauder\microsoftServices\exceptions\serviceException( 'Microsoft authentication failed', 400, $e );
 		}
+
+		//the Azure provider always mints a TheNetworg AccessToken (which carries the id token claims); guard the
+		//interface-level return type so downstream calls to getIdTokenClaims() are type-safe
+		if( !$token instanceof \TheNetworg\OAuth2\Client\Token\AccessToken ) {
+			throw new \andrewsauder\microsoftServices\exceptions\serviceException( 'Unexpected access token type returned by identity provider', 500 );
+		}
+
+		return $token;
 	}
 
 

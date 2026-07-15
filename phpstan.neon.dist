@@ -1,0 +1,13 @@
+parameters:
+	level: 5
+	paths:
+		- src
+	tmpDir: .phpstan-cache
+	treatPhpDocTypesAsCertain: false
+
+	#scanFiles:
+	#	- phpstan-stubs/app.php
+
+
+	#excludePaths:
+	#	- src/services/mongodb/dispatcher.php

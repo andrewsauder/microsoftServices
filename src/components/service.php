@@ -38,19 +38,6 @@ class service {
 	}
 
 	/**
-	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
-	 */
-	private function graphRequestFollowPaging(): \Microsoft\Graph\Graph {
-		$accessToken = $this->getMicrosoftAccessToken();
-
-		$this->graph = new \Microsoft\Graph\Graph();
-		$this->graph->setAccessToken( $accessToken );
-
-		return $this->graph;
-	}
-
-
-	/**
 	 * @return string
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
