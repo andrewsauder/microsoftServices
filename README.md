@@ -89,6 +89,46 @@ if( $rsp->getStatus() < 200 || $rsp->getStatus() >= 300 ) {
 ```
 
 
+### Reply Into a Thread
+
+Continue an existing conversation instead of starting a new one. `replyIntoThread()` creates a reply
+draft anchored on a message you previously sent (so it inherits that conversation and its `RE:` subject),
+sets the recipients and body you provide, and sends it. Store the returned message's immutable id as the
+anchor for the next reply, and its conversation id for inbound matching.
+
+Provide the `from` mailbox, the immutable id of the last message you sent in the thread, and the
+recipients/body. Do not set a subject - the reply inherits it.
+
+```php
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
+
+$sent = $microsoftMail->replyIntoThread(
+    'helpdesk@example.com',   // from (owns the anchor message)
+    $lastMessageId,           // immutable id of the last message sent in the thread
+    [ 'to@example.com' ],     // to
+    [],                       // bcc
+    'HTML compatible message',
+    [ 'cc@example.com' ]      // cc (optional)
+);
+
+$nextAnchor     = $sent->getId();              // store as the next thread anchor
+$conversationId = $sent->getConversationId();  // store for inbound reply matching
+```
+
+If the anchor message no longer exists (deleted), `replyIntoThread()` throws a `serviceException` - catch
+it and fall back to `createDraft()` / `sendDraft()` to start a fresh thread.
+
+Only the immutable id is needed to reply. If you have lost it but still know the conversation id, recover
+an anchor with:
+
+```php
+$latest = $microsoftMail->getLatestMessageInConversation( 'helpdesk@example.com', $conversationId );
+$anchorId = $latest?->getId();
+```
+
+You can also create just the draft (without sending) with `createReplyDraft( $messageId, $from )`.
+
+
 ### Get All Messages
 ```php
 $microsoftMail = new \andrewsauder\microsoftServices\mail( $config );

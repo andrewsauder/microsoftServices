@@ -286,6 +286,221 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 
 
 	/**
+	 * Create a draft reply to an existing message. The draft is created in the SAME conversation as the
+	 * original message and inherits its RFC threading headers (In-Reply-To / References) and a "RE:"
+	 * subject automatically - so those must NOT be set by hand. Recipients and body are set separately
+	 * (see replyIntoThread()).
+	 *
+	 * @param string $messageId Immutable id of the message being replied to (the thread anchor)
+	 * @param string $from      Mailbox that owns the anchor message and will send the reply
+	 *
+	 * @return \Microsoft\Graph\Model\Message The created draft, in the same conversation as $messageId
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function createReplyDraft( string $messageId, string $from ): \Microsoft\Graph\Model\Message {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		if( $from=='' ) {
+			$from = $this->config->fromAddress;
+		}
+
+		//request immutable ids so the returned draft id survives the draft->Sent Items move and is safe
+		//to store as the next thread anchor
+		$headers = [
+			'Prefer' => 'IdType="ImmutableId"'
+		];
+
+		try {
+			$message = $graph->createRequest( 'POST', '/users/' . $from . '/messages/' . $messageId . '/createReply' )
+			                 ->setReturnType( \Microsoft\Graph\Model\Message::class )
+			                 ->addHeaders( $headers )
+			                 ->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to create reply draft: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to create reply draft: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+
+		return $message;
+	}
+
+
+	/**
+	 * Reply into an existing conversation as a single grouped message: create a reply draft anchored on
+	 * $anchorMessageId, set its recipients and body, then send it. Because createReply inherits the
+	 * conversation and threading headers, the message lands in the same thread as the anchor for every
+	 * recipient.
+	 *
+	 * The subject is intentionally not settable here - the reply inherits the anchor's subject and Graph
+	 * prefixes "RE:" automatically.
+	 *
+	 * @param string          $from            Mailbox that owns the anchor and sends the reply
+	 * @param string          $anchorMessageId Immutable id of the last message sent in the thread
+	 * @param string|string[] $to              To recipients
+	 * @param string|string[] $bcc             Bcc recipients
+	 * @param string          $htmlBody        HTML message body
+	 * @param string|string[] $cc              Cc recipients
+	 *
+	 * @return \Microsoft\Graph\Model\Message The sent message; read ->getId() (the next anchor) and ->getConversationId()
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function replyIntoThread( string $from, string $anchorMessageId, string|array $to, string|array $bcc, string $htmlBody, string|array $cc = [] ): \Microsoft\Graph\Model\Message {
+		if( $from=='' ) {
+			$from = $this->config->fromAddress;
+		}
+
+		//1) create the reply draft in the same conversation as the anchor
+		$draft   = $this->createReplyDraft( $anchorMessageId, $from );
+		$draftId = $draft->getId();
+
+		//get application access token for the remaining calls
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		//2) set recipients + body on the draft (subject and threading headers are inherited from the anchor)
+		$patchBody = [
+			'toRecipients'  => $this->buildRecipients( $to ),
+			'ccRecipients'  => $this->buildRecipients( $cc ),
+			'bccRecipients' => $this->buildRecipients( $bcc ),
+			'body'          => [
+				'contentType' => 'HTML',
+				'content'     => $htmlBody
+			]
+		];
+
+		$headers = [
+			'Prefer' => 'IdType="ImmutableId"'
+		];
+
+		try {
+			$message = $graph->createRequest( 'PATCH', '/users/' . $from . '/messages/' . $draftId )
+			                 ->setReturnType( \Microsoft\Graph\Model\Message::class )
+			                 ->addHeaders( $headers )
+			                 ->attachBody( $patchBody )
+			                 ->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to update reply draft: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to update reply draft: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+
+		//3) send the draft
+		try {
+			$graph->createRequest( 'POST', '/users/' . $from . '/messages/' . $draftId . '/send' )
+			      ->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to send reply: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to send reply: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+
+		//the patched draft carries the immutable id (still valid after the move to Sent Items) and the
+		//conversationId inherited from the anchor
+		return $message;
+	}
+
+
+	/**
+	 * Fallback anchor discovery: return the most recent message in a conversation, or null when none is
+	 * found. Used when a stored last_message_id is missing but the conversationId is known.
+	 *
+	 * @param string $from           Mailbox to search
+	 * @param string $conversationId Graph conversationId of the thread
+	 *
+	 * @return \Microsoft\Graph\Model\Message|null
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	public function getLatestMessageInConversation( string $from, string $conversationId ): ?\Microsoft\Graph\Model\Message {
+		//get application access token
+		$accessToken = $this->getMicrosoftAccessToken();
+
+		$graph = new \Microsoft\Graph\Graph();
+		$graph->setAccessToken( $accessToken );
+
+		if( $from=='' ) {
+			$from = $this->config->fromAddress;
+		}
+
+		//escape single quotes for the OData string literal, then url-encode the query values
+		$escapedConversationId = str_replace( "'", "''", $conversationId );
+		$filter                = rawurlencode( "conversationId eq '" . $escapedConversationId . "'" );
+		$orderBy               = rawurlencode( 'receivedDateTime desc' );
+		$url                   = '/users/' . $from . '/messages?$filter=' . $filter . '&$select=id,conversationId&$orderby=' . $orderBy . '&$top=1';
+
+		$headers = [
+			'Prefer' => 'IdType="ImmutableId"'
+		];
+
+		try {
+			$messages = $graph->createRequest( 'GET', $url )
+			                  ->setReturnType( \Microsoft\Graph\Model\Message::class )
+			                  ->addHeaders( $headers )
+			                  ->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to look up conversation: ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to look up conversation: ' . $e->getMessage(), $e->getCode(), $e );
+		}
+
+		if( is_array( $messages ) && count( $messages )>0 ) {
+			return $messages[ 0 ];
+		}
+
+		return null;
+	}
+
+
+	/**
+	 * Build a Graph recipient array from a single address or a list of addresses. Empty values are skipped.
+	 *
+	 * @param string|string[] $addresses
+	 *
+	 * @return array
+	 */
+	private function buildRecipients( string|array $addresses ): array {
+		if( !is_array( $addresses ) ) {
+			$addresses = [ $addresses ];
+		}
+
+		$recipients = [];
+		foreach( $addresses as $emailAddress ) {
+			if( $emailAddress===null || $emailAddress==='' ) {
+				continue;
+			}
+			$recipients[] = [
+				'emailAddress' => [
+					'address' => $emailAddress
+				]
+			];
+		}
+
+		return $recipients;
+	}
+
+
+	/**
 	 * @param string                                              $emailAddress
 	 * @param \andrewsauder\microsoftServices\mail\headers\prefer $preferHeader [optional] Defaults to html
 	 *
