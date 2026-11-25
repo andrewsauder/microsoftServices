@@ -16,7 +16,7 @@
 		"php": ">=8.2",
 		"microsoft/microsoft-graph": "^1.110",
 		"guzzlehttp/guzzle": "^7.9",
-		"thenetworg/oauth2-azure": "^2.0",
+		"thenetworg/oauth2-azure": "^2.2",
 		"ext-fileinfo": "*",
 		"ext-openssl": "*"
 	},
