@@ -3,11 +3,14 @@
 PHP wrapper for easy implementation of Microsoft Graph services
 
 ## Requirement
-| Version | PHP |
-| --- | --- |
-| >=1.6 | >=8.3 |
-| 1.4.3 to 1.5.x | >=8.2 |
-| 1.2 to 1.4.2 | >=8.1 |
+| Version | PHP | Microsoft Graph SDK |
+| --- | --- | --- |
+| >=2.0 | >=8.3 | 3.x |
+| >=1.6 | >=8.3 | 1.x |
+| 1.4.3 to 1.5.x | >=8.2 | 1.x |
+| 1.2 to 1.4.2 | >=8.1 | 1.x |
+
+To upgrade from 1.x, see [UPGRADING.md](UPGRADING.md).
 
 ## Installation
 
@@ -23,6 +26,25 @@ $config->tenant = 'example.com';
 $config->driveId = '';                            //required if using the files service - cay be found using Graph explorer
 $config->fromAddress = 'noreply@example.com';     //required if using mail service - this is just a default
 ```
+
+## Authentication
+
+Each service takes the config and an optional user access token. The token decides how the service signs in
+to Microsoft Graph:
+
+| User access token | `onBehalfOfFlow` | Graph token |
+| --- | --- | --- |
+| None | Any | An application token (client credentials) |
+| Provided | `true` (default) | A token from the on-behalf-of exchange of the user token |
+| Provided | `false` | The user token as it is |
+
+The service requests its token once, at its first Graph call, and reuses it for every later call. An
+application token and an on-behalf-of token use the `https://graph.microsoft.com/.default` scope.
+
+The methods return the models of the Microsoft Graph SDK, for example
+`\Microsoft\Graph\Generated\Models\DriveItem`. A failed Graph call throws a
+`\andrewsauder\microsoftServices\exceptions\serviceException`. Its code is the HTTP status of the Graph
+response, or 500 when there is no response.
 
 ## Files Usage
 
@@ -64,7 +86,7 @@ $uploadFileResponse = $microsoftFiles->upload( 'C:\tmp\testFile.txt', 'testFile.
 
 ```php
 $microsoftFiles = new \andrewsauder\microsoftServices\files( $config );
-$deleteResponse = $microsoftFiles->delete( $itemId );
+$microsoftFiles->delete( $itemId );
 ```
 
 ## Mail Usage
@@ -85,10 +107,12 @@ If the from address is not provided, the default from address in the config will
 ```php
 $microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
 $microsoftMail->addAttachment( 'C:\tmp\testFile.txt' );
-$rsp = $microsoftMail->send( 'to@example.com', 'Subject', 'HTML compatible message', 'from@example.com' );
 
-if( $rsp->getStatus() < 200 || $rsp->getStatus() >= 300 ) {
-    error_log( 'Failed' );
+try {
+    $microsoftMail->send( 'to@example.com', 'Subject', 'HTML compatible message', 'from@example.com' );
+}
+catch( \andrewsauder\microsoftServices\exceptions\serviceException $e ) {
+    error_log( 'Failed: ' . $e->getMessage() );
 }
 ```
 
@@ -181,13 +205,27 @@ $folders = $microsoftMail->getFolders( 'joeschmoe@example.com' );
 ```php
 $microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
 $attachments = $microsoftMail->getAttachments( 'joeschmoe@example.com', 'message-id' );
+
+foreach( $attachments as $attachment ) {
+    if( $attachment instanceof \Microsoft\Graph\Generated\Models\FileAttachment ) {
+        //the stream holds the base64 text of the file
+        file_put_contents( '/tmp/' . $attachment->getName(), base64_decode( (string)$attachment->getContentBytes() ) );
+    }
+}
+```
+
+
+### Move Message
+```php
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
+$movedMessage = $microsoftMail->moveMessage( 'joeschmoe@example.com', 'message-id', 'archive' );
 ```
 
 
 ### Delete Message
 ```php
 $microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
-$graphResponse = $microsoftMail->deleteMessage( 'joeschmoe@example.com', 'message-id' );
+$microsoftMail->deleteMessage( 'joeschmoe@example.com', 'message-id' );
 ```
 
 ## User Usage
