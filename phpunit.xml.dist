@@ -12,6 +12,12 @@
             <directory>tests</directory>
         </testsuite>
     </testsuites>
+    <groups>
+        <!-- tests/live calls a real tenant. tests/live/liveSmokeTest.php says how to run it. -->
+        <exclude>
+            <group>live</group>
+        </exclude>
+    </groups>
     <source>
         <include>
             <directory>src</directory>

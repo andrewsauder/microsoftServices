@@ -6,6 +6,8 @@ namespace andrewsauder\microsoftServices\tests\mail;
 
 use andrewsauder\microsoftServices\exceptions\serviceException;
 use andrewsauder\microsoftServices\mail\attachment;
+use Microsoft\Kiota\Abstractions\Serialization\Parsable;
+use Microsoft\Kiota\Serialization\Json\JsonSerializationWriter;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -88,11 +90,11 @@ final class attachmentTest extends TestCase {
 
 
 	#[Test]
-	public function fileAttachmentBodyCarriesTheBase64Content(): void {
+	public function fileAttachmentSerializesTheBase64Content(): void {
 		$path = $this->directory . '/report.pdf';
 		file_put_contents( $path, 'pdf bytes' );
 
-		$body = attachment::fromFile( $path )->fileAttachmentBody();
+		$body = self::toJson( attachment::fromFile( $path )->toFileAttachment() );
 
 		$this->assertSame( '#microsoft.graph.fileAttachment', $body[ '@odata.type' ] );
 		$this->assertSame( 'report.pdf', $body[ 'name' ] );
@@ -101,17 +103,38 @@ final class attachmentTest extends TestCase {
 
 
 	#[Test]
-	public function uploadSessionBodyDescribesTheFile(): void {
-		$body = ( new attachment( '/tmp/scan.pdf', 'scan.pdf', 'application/pdf', 5_000_000 ) )->uploadSessionBody();
+	public function uploadSessionRequestBodyDescribesTheFile(): void {
+		$body = self::toJson( ( new attachment( '/tmp/scan.pdf', 'scan.pdf', 'application/pdf', 5_000_000 ) )->toUploadSessionRequestBody() );
 
 		$this->assertSame( [
 			'AttachmentItem' => [
 				'attachmentType' => 'file',
+				'contentType'    => 'application/pdf',
 				'name'           => 'scan.pdf',
-				'size'           => 5_000_000,
-				'contentType'    => 'application/pdf'
+				'size'           => 5_000_000
 			]
-		], $body );
+		], self::sortKeys( $body ) );
+	}
+
+
+	/** The JSON that the SDK sends for a request body */
+	private static function toJson( Parsable $body ): array {
+		$writer = new JsonSerializationWriter();
+		$writer->writeObjectValue( null, $body );
+
+		return json_decode( $writer->getSerializedContent()->getContents(), true, 512, JSON_THROW_ON_ERROR );
+	}
+
+
+	private static function sortKeys( array $value ): array {
+		ksort( $value );
+		foreach( $value as $key => $item ) {
+			if( is_array( $item ) ) {
+				$value[ $key ] = self::sortKeys( $item );
+			}
+		}
+
+		return $value;
 	}
 
 

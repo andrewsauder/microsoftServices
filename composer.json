@@ -14,7 +14,7 @@
 	},
 	"require": {
 		"php": ">=8.3",
-		"microsoft/microsoft-graph": "^1.110",
+		"microsoft/microsoft-graph": "^3.11",
 		"guzzlehttp/guzzle": "^7.9",
 		"thenetworg/oauth2-azure": "^2.2",
 		"ext-fileinfo": "*",

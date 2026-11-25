@@ -2,9 +2,8 @@
 
 namespace andrewsauder\microsoftServices;
 
-use andrewsauder\microsoftServices\exceptions\serviceException;
-use GuzzleHttp\Exception\GuzzleException;
-use Microsoft\Graph\Exception\GraphException;
+use Microsoft\Graph\Generated\Models\User as GraphUser;
+use Microsoft\Graph\Generated\Users\UsersRequestBuilderGetRequestConfiguration;
 
 class user extends \andrewsauder\microsoftServices\components\service {
 
@@ -21,72 +20,45 @@ class user extends \andrewsauder\microsoftServices\components\service {
 
 
 	/**
-	 * @return \Microsoft\Graph\Model\User[]
+	 * Every user in the organization, from every page of the /users collection
+	 *
+	 * @return \Microsoft\Graph\Generated\Models\User[]
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function allUsersInOrganization( ?string $nextLink = null ): array {
+	public function allUsersInOrganization(): array {
 		try {
-			if( $nextLink===null ) {
-				$nextLink = '/users';
-			}
-			$graphResponse = $this->graph->createRequest( 'GET', $nextLink )->execute();
-			if( $graphResponse->getNextLink() ) {
-				error_log( $graphResponse->getNextLink() );
-				return array_merge( $graphResponse->getResponseAsObject( \Microsoft\Graph\Model\User::class ), $this->allUsersInOrganization( $graphResponse->getNextLink() ) );
-			}
+			return $this->collectAll( $this->graph->users()->get()->wait() );
 		}
-		catch( GraphException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get user', $e->getCode(), $e );
+		catch( \Throwable $e ) {
+			throw $this->toServiceException( 'Failed to get users', $e );
 		}
-		catch( GuzzleException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get user', $e->getCode(), $e );
-		}
-
-		return $graphResponse->getResponseAsObject( \Microsoft\Graph\Model\User::class );
 	}
 
 
 	/**
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function getUserByUserPrincipalName( string $upn ): \Microsoft\Graph\Model\User {
+	public function getUserByUserPrincipalName( string $upn ): GraphUser {
 		try {
-			//get application access token
-			$accessToken = $this->getMicrosoftAccessToken();
+			$user = $this->graph->users()->byUserId( $upn )->get()->wait();
+		}
+		catch( \Throwable $e ) {
+			throw $this->toServiceException( 'Failed to get user', $e );
+		}
 
-			$graph = new \Microsoft\Graph\Graph();
-			$graph->setAccessToken( $accessToken );
+		if( !$user instanceof GraphUser ) {
+			throw new \andrewsauder\microsoftServices\exceptions\serviceException( 'Failed to get user', 404 );
+		}
 
-			$response = $graph->createRequest( 'GET', '/users/' . $upn )->setReturnType( \Microsoft\Graph\Model\User::class )->execute();
-		}
-		catch( GraphException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get user', $e->getCode(), $e );
-		}
-		catch( GuzzleException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get user', $e->getCode(), $e );
-		}
-		return $response;
+		return $user;
 	}
 
 
 	/**
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
-	public function getUserById( string $externalId ): \Microsoft\Graph\Model\User {
+	public function getUserById( string $externalId ): GraphUser {
 		return $this->getUserByUserPrincipalName( $externalId );
-	}
-
-
-	/**
-	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
-	 * @deprecated use getUserByUserPrincipalName instead. This function has always operate on UPN, not email. Preserved in v1 for backwards compatibility only. Will be removed in v2 or changed to actually search for user by mail attribute
-	 */
-	public function getUserByEmail( string $email ): \Microsoft\Graph\Model\User {
-		return $this->getUserByUserPrincipalName( $email );
 	}
 
 
@@ -95,30 +67,21 @@ class user extends \andrewsauder\microsoftServices\components\service {
 	 *                       Ex: to run Graph command /users?$filter=startswith(userPrincipalName,'asauder')
 	 *                       pass just <i>startswith(userPrincipalName,'asauder')</i> to this function param
 	 *
-	 * @return \Microsoft\Graph\Model\User[]
+	 * @return \Microsoft\Graph\Generated\Models\User[]
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 * @see https://learn.microsoft.com/en-us/graph/filter-query-parameter?tabs=http
-	 *
 	 */
 	public function getUsersByFilter( string $filter ): array {
+		$requestConfiguration = new UsersRequestBuilderGetRequestConfiguration(
+			queryParameters: UsersRequestBuilderGetRequestConfiguration::createQueryParameters( filter: $filter )
+		);
+
 		try {
-			//get application access token
-			$accessToken = $this->getMicrosoftAccessToken();
-
-			$graph = new \Microsoft\Graph\Graph();
-			$graph->setAccessToken( $accessToken );
-
-			$response = $graph->createRequest( 'GET', '/users?$filter=' . $filter )->setReturnType( \Microsoft\Graph\Model\User::class )->execute();
+			return $this->collectAll( $this->graph->users()->get( $requestConfiguration )->wait() );
 		}
-		catch( GraphException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get user', $e->getCode(), $e );
+		catch( \Throwable $e ) {
+			throw $this->toServiceException( 'Failed to get users', $e );
 		}
-		catch( GuzzleException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get user', $e->getCode(), $e );
-		}
-		return $response;
 	}
 
 }

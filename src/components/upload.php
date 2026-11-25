@@ -6,7 +6,7 @@ class upload {
 
 	/**
 	 * @OA\Property()
-	 * @var \Microsoft\Graph\Model\DriveItem[]
+	 * @var \Microsoft\Graph\Generated\Models\DriveItem[]
 	 */
 	public array                          $files        = [];
 

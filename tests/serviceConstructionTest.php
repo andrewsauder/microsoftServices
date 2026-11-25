@@ -36,6 +36,35 @@ final class serviceConstructionTest extends TestCase {
 	}
 
 
+	/**
+	 * The Graph client asks for a token only when it sends its first request, so a valid config builds every
+	 * service offline: with an application token, with the on-behalf-of flow, and with a user token as it is.
+	 */
+	#[Test]
+	#[DataProvider( 'authenticationModeProvider' )]
+	public function constructingAServiceWithAValidConfigSendsNoRequest( bool $onBehalfOfFlow, ?string $userAccessToken ): void {
+		$config                 = new config();
+		$config->clientId       = 'client-id';
+		$config->clientSecret   = 'client-secret';
+		$config->tenant         = 'contoso.example';
+		$config->driveId        = 'drive-1';
+		$config->onBehalfOfFlow = $onBehalfOfFlow;
+
+		foreach( self::serviceClassProvider() as [ $serviceClass ] ) {
+			$this->assertInstanceOf( $serviceClass, new $serviceClass( $config, $userAccessToken ) );
+		}
+	}
+
+
+	public static function authenticationModeProvider(): array {
+		return [
+			'application token' => [ true, null ],
+			'on-behalf-of flow' => [ true, 'user-token' ],
+			'user token'        => [ false, 'user-token' ],
+		];
+	}
+
+
 	public static function serviceClassProvider(): array {
 		return [
 			'user'     => [ user::class ],
