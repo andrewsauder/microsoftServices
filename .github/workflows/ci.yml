@@ -26,7 +26,7 @@ jobs:
         with:
           # The lowest version composer.json allows. PHPStan analyses for the PHP it runs on,
           # so syntax newer than the floor fails here.
-          php-version: '8.2'
+          php-version: '8.3'
           extensions: fileinfo, openssl
           tools: composer:v2
           coverage: none
@@ -41,7 +41,7 @@ jobs:
       fail-fast: false
       matrix:
         # Every PHP version composer.json allows, from the floor to the newest release
-        php: ['8.2', '8.3', '8.4', '8.5']
+        php: ['8.3', '8.4', '8.5']
     steps:
       - uses: actions/checkout@v7
       - uses: shivammathur/setup-php@v2

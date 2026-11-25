@@ -3,7 +3,11 @@
 PHP wrapper for easy implementation of Microsoft Graph services
 
 ## Requirement
-Version >=1.2 requires PHP >=8.1
+| Version | PHP |
+| --- | --- |
+| >=1.6 | >=8.3 |
+| 1.4.3 to 1.5.x | >=8.2 |
+| 1.2 to 1.4.2 | >=8.1 |
 
 ## Installation
 
