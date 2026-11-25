@@ -1,0 +1,25 @@
+version: 2
+
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+    # This is a library, so it commits no composer.lock. The default strategy for a library only widens
+    # a range, so a constraint such as ^1.110 gets a pull request for a new major version only.
+    # "increase" raises the floor of the range (^1.110 to ^1.115), so each new minor or patch version
+    # gets a pull request too.
+    versioning-strategy: increase
+    groups:
+      # One pull request, and so one release, for all the minor and patch updates of a week.
+      # Security updates and major updates still get a pull request of their own.
+      composer-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions-minor-and-patch:
+        update-types: [minor, patch]

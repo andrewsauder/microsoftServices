@@ -1,0 +1,130 @@
+name: Dependabot merge and release
+
+# After CI passes on a Dependabot pull request, this workflow merges the pull request when every update
+# in it is a patch or minor version update. Dependabot security updates at those levels qualify too.
+# When the update changes a production dependency in composer.json, the workflow then tags a patch
+# release and publishes a GitHub release for it.
+#
+# The workflow merges and releases in one job on purpose. A merge or a tag that GITHUB_TOKEN makes does
+# not start other workflows, so a separate release workflow on "push" never runs after the merge.
+#
+# The trigger is workflow_run, not pull_request. Dependabot runs pull_request workflows with a
+# read-only token. This workflow runs from the default branch and never checks out pull request code.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# One merge and release at a time, so two pull requests never compute the same version number
+concurrency:
+  group: dependabot-release
+  cancel-in-progress: false
+
+jobs:
+  merge-and-release:
+    name: Merge and release
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      startsWith(github.event.workflow_run.head_branch, 'dependabot/')
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Find the pull request
+        id: pr
+        run: |
+          pr=$(gh pr list --head "$HEAD_BRANCH" --state open --json number,headRefOid,author \
+            --jq '.[] | select(.author.is_bot and (.author.login | test("dependabot"))) | "\(.number) \(.headRefOid)"')
+          if [ -z "$pr" ]; then
+            echo "No open Dependabot pull request for $HEAD_BRANCH. Nothing to do."
+            exit 0
+          fi
+          read -r number head <<< "$pr"
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "Pull request #$number has a newer commit than the one CI checked. CI runs again for it."
+            exit 0
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Check the update types
+        id: check
+        if: steps.pr.outputs.number
+        env:
+          NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          # Every commit must come from Dependabot. A commit from someone else needs a human review.
+          others=$(gh api "repos/$GH_REPO/pulls/$NUMBER/commits" --paginate \
+            --jq '[.[] | select(.author.login != "dependabot[bot]")] | length')
+          if [ "$others" != "0" ]; then
+            echo "Pull request #$NUMBER has commits from someone other than Dependabot. Leave it for review."
+            exit 0
+          fi
+
+          # Dependabot writes a YAML block in each commit message, with an update-type and a
+          # dependency-type for each dependency it updates.
+          gh api "repos/$GH_REPO/pulls/$NUMBER/commits" --paginate --jq '.[].commit.message' > messages.txt
+          types=$(grep -oE 'update-type: version-update:semver-[a-z]+' messages.txt | sort -u || true)
+          echo "Update types:"
+          echo "$types"
+
+          if [ -z "$types" ]; then
+            echo "No update type in the commit messages. Leave the pull request for review."
+            exit 0
+          fi
+          if echo "$types" | grep -qv -E 'semver-(minor|patch)$'; then
+            echo "The pull request has a major update. Leave it for review."
+            exit 0
+          fi
+          echo "merge=true" >> "$GITHUB_OUTPUT"
+
+          # Only a production dependency in composer.json changes what an application gets
+          # when it installs this library.
+          if [[ "$HEAD_BRANCH" == dependabot/composer/* ]] && grep -q 'dependency-type: direct:production' messages.txt; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge the pull request
+        id: merge
+        if: steps.check.outputs.merge == 'true'
+        env:
+          NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          # --match-head-commit refuses the merge if the branch moved after CI checked it
+          gh pr merge "$NUMBER" --squash --match-head-commit "$HEAD_SHA"
+          sha=$(gh pr view "$NUMBER" --json mergeCommit --jq '.mergeCommit.oid')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and publish a patch release
+        if: steps.check.outputs.release == 'true' && steps.merge.outputs.sha
+        env:
+          NUMBER: ${{ steps.pr.outputs.number }}
+          MERGE_SHA: ${{ steps.merge.outputs.sha }}
+        run: |
+          latest=$(gh api "repos/$GH_REPO/tags" --paginate --jq '.[].name' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          if [ -z "$latest" ]; then
+            echo "::error::No vX.Y.Z tag found to compute the next version from."
+            exit 1
+          fi
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          next="v$major.$minor.$((patch + 1))"
+          echo "Latest tag $latest. Next tag $next."
+
+          title=$(gh pr view "$NUMBER" --json title --jq '.title')
+          gh release create "$next" \
+            --target "$MERGE_SHA" \
+            --title "$next" \
+            --notes-start-tag "$latest" \
+            --generate-notes \
+            --notes "Dependency update: $title (#$NUMBER)"
