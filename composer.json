@@ -28,7 +28,7 @@
 		}
 	},
 	"require-dev": {
-		"phpstan/phpstan": "^2.1",
+		"phpstan/phpstan": "^2.3",
 		"phpunit/phpunit": "^11.5",
 		"jetbrains/phpstorm-attributes": "^1.0"
 	},
