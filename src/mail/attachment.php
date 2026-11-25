@@ -3,6 +3,11 @@
 namespace andrewsauder\microsoftServices\mail;
 
 use andrewsauder\microsoftServices\exceptions\serviceException;
+use GuzzleHttp\Psr7\Utils;
+use Microsoft\Graph\Generated\Models\AttachmentItem;
+use Microsoft\Graph\Generated\Models\AttachmentType;
+use Microsoft\Graph\Generated\Models\FileAttachment;
+use Microsoft\Graph\Generated\Users\Item\Messages\Item\Attachments\CreateUploadSession\CreateUploadSessionPostRequestBody;
 
 
 /**
@@ -78,35 +83,39 @@ final class attachment {
 
 	/**
 	 * The fileAttachment resource with the base64 content, for a POST to a message's attachments or for
-	 * the attachments list of a sendMail request
+	 * the attachments list of a sendMail request.
+	 *
+	 * The SDK writes contentBytes to the JSON as it is, so the stream holds the base64 text, not the raw bytes.
 	 *
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException 500 when the file cannot be read
 	 */
-	public function fileAttachmentBody(): array {
+	public function toFileAttachment(): FileAttachment {
 		$contents = @file_get_contents( $this->path );
 		if( $contents===false ) {
 			throw new serviceException( 'Unable to read the attachment ' . $this->name, 500 );
 		}
 
-		return [
-			'@odata.type'  => '#microsoft.graph.fileAttachment',
-			'name'         => $this->name,
-			'contentType'  => $this->contentType,
-			'contentBytes' => base64_encode( $contents )
-		];
+		$fileAttachment = new FileAttachment();
+		$fileAttachment->setName( $this->name );
+		$fileAttachment->setContentType( $this->contentType );
+		$fileAttachment->setContentBytes( Utils::streamFor( base64_encode( $contents ) ) );
+
+		return $fileAttachment;
 	}
 
 
-	/** The request body of createUploadSession */
-	public function uploadSessionBody(): array {
-		return [
-			'AttachmentItem' => [
-				'attachmentType' => 'file',
-				'name'           => $this->name,
-				'size'           => $this->size,
-				'contentType'    => $this->contentType
-			]
-		];
+	/** The request body of createUploadSession for a message attachment */
+	public function toUploadSessionRequestBody(): CreateUploadSessionPostRequestBody {
+		$attachmentItem = new AttachmentItem();
+		$attachmentItem->setAttachmentType( new AttachmentType( AttachmentType::FILE ) );
+		$attachmentItem->setName( $this->name );
+		$attachmentItem->setSize( $this->size );
+		$attachmentItem->setContentType( $this->contentType );
+
+		$requestBody = new CreateUploadSessionPostRequestBody();
+		$requestBody->setAttachmentItem( $attachmentItem );
+
+		return $requestBody;
 	}
 
 

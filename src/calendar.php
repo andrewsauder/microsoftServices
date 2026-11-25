@@ -2,12 +2,10 @@
 
 namespace andrewsauder\microsoftServices;
 
-use andrewsauder\microsoftServices\exceptions\serviceException;
-use GuzzleHttp\Exception\GuzzleException;
-use Microsoft\Graph\Exception\GraphException;
+use Microsoft\Graph\Generated\Users\Item\Calendars\Item\CalendarView\CalendarViewRequestBuilderGetRequestConfiguration;
+use Microsoft\Graph\Generated\Users\Item\Calendars\Item\Events\EventsRequestBuilderGetRequestConfiguration;
 
 class calendar extends \andrewsauder\microsoftServices\components\service {
-
 
 
 	/**
@@ -24,105 +22,78 @@ class calendar extends \andrewsauder\microsoftServices\components\service {
 	/**
 	 * @param string $calendarOwner User id or username of a user whose calendars you want to fetch. Access token must have permission to access this account.
 	 *
-	 * @return \Microsoft\Graph\Model\Calendar[]
+	 * @return \Microsoft\Graph\Generated\Models\Calendar[]
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
 	public function getCalendars( string $calendarOwner ): array {
-		//get application access token
-		$accessToken = $this->getMicrosoftAccessToken();
-
-		$graph = new \Microsoft\Graph\Graph();
-		$graph->setAccessToken( $accessToken );
-
 		try {
-
-			$iterator = $graph->createCollectionRequest( 'GET', '/users/' . $calendarOwner . '/calendars' )
-			                  ->setReturnType( \Microsoft\Graph\Model\Calendar::class );
-			$calendars  = $iterator->getPage();
-			while( !$iterator->isEnd() ) {
-				$calendars = array_merge( $calendars, $iterator->getPage() );
-			}
-			return $calendars;
+			return $this->collectAll( $this->graph->users()->byUserId( $calendarOwner )->calendars()->get()->wait() );
 		}
-		catch( GraphException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get calendars: ' . $e->getMessage(), 500, $e );
-		}
-		catch( GuzzleException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get calendars: ' . $e->getMessage(), $e->getCode(), $e );
+		catch( \Throwable $e ) {
+			throw $this->toServiceException( 'Failed to get calendars', $e );
 		}
 	}
 
 
 	/**
-	 * @param string $calendarOwner User id or username of a user whose calendars you want to fetch. Access token must have permission to access this account.
-	 * @param string $calendarId Calendar id to get events from
+	 * Every event that occurs between the two dates, in order of start time. Recurring events are expanded into their
+	 * occurrences.
 	 *
-	 * @return \Microsoft\Graph\Model\Event[]
+	 * @param string $calendarOwner User id or username of a user whose calendars you want to fetch. Access token must have permission to access this account.
+	 * @param string $calendarId    Calendar id to get events from
+	 *
+	 * @return \Microsoft\Graph\Generated\Models\Event[]
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
 	public function getCalendarEvents( string $calendarOwner, string $calendarId, \DateTimeImmutable $startDateTime, \DateTimeImmutable $endDateTime ): array {
-		//get application access token
-		$accessToken = $this->getMicrosoftAccessToken();
-
-		$graph = new \Microsoft\Graph\Graph();
-		$graph->setAccessToken( $accessToken );
+		$requestConfiguration = new CalendarViewRequestBuilderGetRequestConfiguration(
+			queryParameters: CalendarViewRequestBuilderGetRequestConfiguration::createQueryParameters(
+				endDateTime  : $endDateTime->format( 'c' ),
+				orderby      : [ 'start/dateTime' ],
+				startDateTime: $startDateTime->format( 'c' )
+			)
+		);
 
 		try {
-
-			$iterator = $graph->createCollectionRequest( 'GET', '/users/' . $calendarOwner . '/calendars/'. $calendarId .'/calendarview?startdatetime='. $startDateTime->format('c').'&enddatetime='.  $endDateTime->format('c') .'&$orderby=start/dateTime' )
-			                  ->setReturnType( \Microsoft\Graph\Model\Event::class );
-			$events  = $iterator->getPage();
-			while( !$iterator->isEnd() ) {
-				$events = array_merge( $events, $iterator->getPage() );
-			}
-			return $events;
+			return $this->collectAll(
+				$this->graph->users()->byUserId( $calendarOwner )->calendars()->byCalendarId( $calendarId )->calendarView()->get( $requestConfiguration )->wait()
+			);
 		}
-		catch( GraphException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get calendar events: ' . $e->getMessage(), 500, $e );
-		}
-		catch( GuzzleException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get calendar events: ' . $e->getMessage(), $e->getCode(), $e );
+		catch( \Throwable $e ) {
+			throw $this->toServiceException( 'Failed to get calendar events', $e );
 		}
 	}
 
 
 	/**
-	 * @param string $calendarOwner User id or username of a user whose calendars you want to fetch. Access token must have permission to access this account.
-	 * @param string $calendarId Calendar id to get events from
+	 * At most $numberOfEventsToGet events that start or end at or after $startDateTime, in order of start time
 	 *
-	 * @return \Microsoft\Graph\Model\Event[]
+	 * @param string $calendarOwner User id or username of a user whose calendars you want to fetch. Access token must have permission to access this account.
+	 * @param string $calendarId    Calendar id to get events from
+	 *
+	 * @return \Microsoft\Graph\Generated\Models\Event[]
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
 	public function getNCalendarEventsOccurringDuringOrAfter( string $calendarOwner, string $calendarId, \DateTimeImmutable $startDateTime, int $numberOfEventsToGet ): array {
-		//get application access token
-		$accessToken = $this->getMicrosoftAccessToken();
+		$start = $startDateTime->format( 'c' );
 
-		$graph = new \Microsoft\Graph\Graph();
-		$graph->setAccessToken( $accessToken );
+		$requestConfiguration = new EventsRequestBuilderGetRequestConfiguration(
+			queryParameters: EventsRequestBuilderGetRequestConfiguration::createQueryParameters(
+				filter : "start/dateTime ge '" . $start . "' or end/dateTime ge '" . $start . "'",
+				orderby: [ 'start/dateTime' ],
+				top    : $numberOfEventsToGet
+			)
+		);
 
 		try {
+			$page = $this->graph->users()->byUserId( $calendarOwner )->calendars()->byCalendarId( $calendarId )->events()->get( $requestConfiguration )->wait();
+		}
+		catch( \Throwable $e ) {
+			throw $this->toServiceException( 'Failed to get calendar events', $e );
+		}
 
-			$iterator = $graph->createCollectionRequest( 'GET', '/users/' . $calendarOwner . '/calendars/'. $calendarId .'/events?$filter=start/dateTime ge \''.$startDateTime->format('c').'\' or end/dateTime ge \''.$startDateTime->format('c').'\'&$top='.$numberOfEventsToGet.'&$orderby=start/dateTime' )
-			                  ->setReturnType( \Microsoft\Graph\Model\Event::class );
-			$events  = $iterator->getPage();
-			while( !$iterator->isEnd() ) {
-				$events = array_merge( $events, $iterator->getPage() );
-			}
-			return $events;
-		}
-		catch( GraphException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get calendar events: ' . $e->getMessage(), 500, $e );
-		}
-		catch( GuzzleException $e ) {
-			error_log( $e );
-			throw new serviceException( 'Failed to get calendar events: ' . $e->getMessage(), $e->getCode(), $e );
-		}
+		//the first page holds at most $top events; the next pages are past the number asked for
+		return $page?->getValue() ?? [];
 	}
-
 
 }

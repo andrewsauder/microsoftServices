@@ -3,8 +3,6 @@
 namespace andrewsauder\microsoftServices;
 
 
-use andrewsauder\microsoftServices\exceptions\serviceException;
-use GuzzleHttp\Exception\GuzzleException;
 
 class auth {
 
@@ -82,32 +80,6 @@ class auth {
 		$tokenInformation->upn                = $claims[ 'upn' ] ?? '';
 
 		return $tokenInformation;
-	}
-
-
-	/**
-	 * @return string
-	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
-	 */
-	public function getApplicationAccessToken() : string {
-		//get application access token
-		try {
-			$guzzle = new \GuzzleHttp\Client();
-			$url    = 'https://login.microsoftonline.com/' . $this->config->tenant . '/oauth2/token?api-version=1.0';
-			$token  = json_decode( $guzzle->post( $url, [
-				'form_params' => [
-					'client_id'     => $this->config->clientId,
-					'client_secret' => $this->config->clientSecret,
-					'resource'      => 'https://graph.microsoft.com/',
-					'grant_type'    => 'client_credentials',
-				],
-			] )->getBody()->getContents() );
-
-			return $token->access_token;
-		}
-		catch( GuzzleException $e ) {
-			throw new serviceException( $e->getMessage(), 500, $e );
-		}
 	}
 
 }
