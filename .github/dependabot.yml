@@ -10,6 +10,11 @@ updates:
     # "increase" raises the floor of the range (^1.110 to ^1.115), so each new minor or patch version
     # gets a pull request too.
     versioning-strategy: increase
+    ignore:
+      # PHPUnit 13 requires PHP 8.4, and composer.json allows PHP 8.3. Remove this rule when the PHP floor
+      # in composer.json becomes 8.4.
+      - dependency-name: phpunit/phpunit
+        versions: [">=13"]
     groups:
       # One pull request, and so one release, for all the minor and patch updates of a week.
       # Security updates and major updates still get a pull request of their own.
