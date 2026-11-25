@@ -1,0 +1,150 @@
+# Merge a Dependabot pull request on its own, once CI is green, when it is one of two kinds.
+# Everything else Dependabot opens waits for a person.
+#
+#   1. A minor or patch update. For a grouped pull request, fetch-metadata reports the
+#      largest update in the group, and .github/dependabot.yml keeps majors out of groups.
+#   2. A security update: it closes an OPEN Dependabot alert, and it is not a major bump.
+#      A major bump changes behaviour, so a person merges it, security fix or not.
+#
+# After the merge, auto-release.yml tags the next patch version as a GitHub Release.
+#
+# "Auto-merge" is GitHub's own: the pull request merges when every required status check
+# passes, and not before. That needs two repository settings: Allow auto-merge, and a branch
+# ruleset on main that requires the CI checks. Without a required check GitHub refuses to arm
+# auto-merge on a pull request that nothing holds back, and this workflow fails with a message
+# that says so.
+#
+# The merge uses a token from a GitHub App, not the workflow's own token, for two reasons:
+#
+#   - A merge made with GITHUB_TOKEN fires no push event. CI would not run on main, and
+#     auto-release.yml, which waits for CI on main, would never tag the Release.
+#   - The alert lookup needs a token that can read Dependabot alerts. GITHUB_TOKEN cannot.
+#
+# The App needs these repository permissions, and no bypass on any ruleset:
+#
+#   Contents: read and write        to merge
+#   Pull requests: read and write   to arm auto-merge
+#   Workflows: read and write       GitHub refuses a GitHub Actions update from an App without it
+#   Dependabot alerts: read         for the alert lookup
+#
+# Its client ID and private key are DEPENDABOT secrets, not Actions secrets. A workflow that
+# Dependabot triggers sees only Dependabot secrets: AUTOMERGE_APP_CLIENT_ID and
+# AUTOMERGE_APP_PRIVATE_KEY. Until both exist, this workflow warns and merges nothing.
+#
+# `pull_request`, not `pull_request_target`: nothing here checks out or runs the pull request's
+# code, and the permissions below are the whole of what the job can do.
+
+name: Dependabot auto-merge
+
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  auto-merge:
+    name: Merge a minor, patch or security update
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for the merge App
+        id: app
+        env:
+          CLIENT_ID: ${{ secrets.AUTOMERGE_APP_CLIENT_ID }}
+          PRIVATE_KEY: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$CLIENT_ID" ] || [ -z "$PRIVATE_KEY" ]; then
+            echo "::warning::AUTOMERGE_APP_CLIENT_ID and AUTOMERGE_APP_PRIVATE_KEY are not both set as Dependabot secrets, so nothing merges on its own. See docs/dependency-updates.md, Dependency updates."
+            echo "present=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Pinned by commit, unlike the actions around it: this one receives the App's private
+      # key. With no owner or repositories given, the token covers this repository alone.
+      - name: Mint the merge token
+        id: token
+        if: steps.app.outputs.present == 'yes'
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ secrets.AUTOMERGE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+
+      - name: Read the update
+        id: metadata
+        if: steps.app.outputs.present == 'yes'
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ steps.token.outputs.token }}
+          # Fills alert-state, ghsa-id and cvss when the pull request closes an alert.
+          alert-lookup: true
+
+      # One decision, in one place. Every value comes in through the environment. An empty
+      # value, a field fetch-metadata could not fill, never satisfies a rule, so an update this
+      # step cannot read waits for a person.
+      - name: Decide
+        id: decide
+        if: steps.app.outputs.present == 'yes'
+        env:
+          ALERT_STATE: ${{ steps.metadata.outputs.alert-state }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
+          GHSA: ${{ steps.metadata.outputs.ghsa-id }}
+          CVSS: ${{ steps.metadata.outputs.cvss }}
+        run: |
+          set -euo pipefail
+          if [ "$ALERT_STATE" = 'OPEN' ] && [ -n "$UPDATE_TYPE" ] \
+             && [ "$UPDATE_TYPE" != 'version-update:semver-major' ]; then
+            merge=yes
+            reason="it closes $GHSA (CVSS $CVSS)"
+          elif [ "$UPDATE_TYPE" = 'version-update:semver-minor' ] \
+               || [ "$UPDATE_TYPE" = 'version-update:semver-patch' ]; then
+            merge=yes
+            reason="it is a ${UPDATE_TYPE#version-update:semver-} update"
+          else
+            merge=no
+            if [ -n "$ALERT_STATE" ]; then
+              reason="it closes an alert in state $ALERT_STATE with update type '${UPDATE_TYPE:-unknown}', and a major bump waits for a person"
+            else
+              reason="it is an update of type '${UPDATE_TYPE:-unknown}', and only a minor or patch update merges on its own"
+            fi
+          fi
+          echo "$DEPENDENCIES ($UPDATE_TYPE): merge=$merge, because $reason"
+          {
+            echo "merge=$merge"
+            echo "reason=$reason"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Arm auto-merge
+        if: steps.decide.outputs.merge == 'yes'
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          set -euo pipefail
+          # Squash: one commit on main per update, authored by dependabot[bot]. That author is
+          # how auto-release.yml tells a dependency update from a person's change.
+          if ! gh pr merge --auto --squash "$PR_URL"; then
+            echo "::error::could not arm auto-merge. andrewsauder/microsoftServices needs Allow auto-merge and Allow squash merging on, and a ruleset on main that requires the CI checks. See docs/dependency-updates.md, Dependency updates."
+            exit 1
+          fi
+          {
+            echo "### Auto-merge armed"
+            echo
+            echo "- $DEPENDENCIES: $UPDATE_TYPE"
+            echo "- why: $REASON"
+            echo "- merges when the required CI checks pass"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Leave it for a person
+        if: steps.decide.outputs.merge == 'no'
+        env:
+          DEPENDENCIES: ${{ steps.metadata.outputs.dependency-names }}
+          REASON: ${{ steps.decide.outputs.reason }}
+        run: |
+          echo "::notice::$DEPENDENCIES: not merged on its own, because $REASON. A person merges it."
+          echo "Not merged on its own: $DEPENDENCIES, because $REASON." >> "$GITHUB_STEP_SUMMARY"

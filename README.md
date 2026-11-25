@@ -215,3 +215,7 @@ See https://learn.microsoft.com/en-us/graph/filter-query-parameter?tabs=http for
 $microsoftUserService = new \andrewsauder\microsoftServices\user( $config );
 $users = $microsoftUserService->getUsersByFilter( 'startswith(userPrincipalName,"andrew")' );
 ```
+
+## Maintenance
+
+Dependabot updates merge and release on their own. See [docs/dependency-updates.md](docs/dependency-updates.md) for how the chain works and the one-time GitHub setup.

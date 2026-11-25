@@ -1,0 +1,132 @@
+# Tag a Release when Dependabot updates have merged and CI is green on main.
+#
+# The chain, start to end:
+#
+#   1. Dependabot opens a pull request. dependabot-auto-merge.yml arms auto-merge on it.
+#   2. The pull request merges when the required CI checks pass. The merge App's token makes
+#      the merge, so the push to main fires CI.
+#   3. CI passes on main. This workflow runs, and tags the next patch version, v1.2.3 → v1.2.4,
+#      as a GitHub Release with generated notes.
+#   4. Packagist reads the new tag through its GitHub webhook. A webhook is not a workflow, so
+#      a tag that GITHUB_TOKEN creates still reaches it.
+#
+# This is a library, so the chain ends at the tag. The gcgov application repositories that this
+# workflow comes from (gcgov/lab-api) also start a deploy here. This repository has no deploy.
+#
+# It tags only when every commit since the last tag is Dependabot's. A person's change waits
+# for a person to tag it, so a dependency update never ships unreviewed work by surprise. It
+# also skips a Release when the commits change nothing outside .github/: a GitHub Actions
+# update changes nothing that Composer installs.
+#
+# The tag is a patch bump whatever the dependency update was. The version number belongs to
+# this library, and a dependency update does not change what the library does.
+
+name: Auto release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Two merges close together give two CI runs on main. One at a time, so they never pick the
+# same version number. The second run sees the first one's tag and counts from it.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag a Dependabot release
+    # Only CI runs for a push to main. A pull request run also reports head_branch, and its
+    # head_branch can be named main in a fork.
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and the GitHub Release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide
+        id: decide
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          skip() {
+            echo "::notice::No Release: $1"
+            echo "No Release: $1" >> "$GITHUB_STEP_SUMMARY"
+            echo "release=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          git merge-base --is-ancestor "$SHA" HEAD || skip "$SHA is not on main."
+
+          # The newest vX.Y.Z by version order, not by date or by name: v1.1.14 sorts after
+          # v1.1.9.
+          latest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          [ -n "$latest" ] || skip "no vX.Y.Z tag exists to count from. Push the first one by hand."
+
+          # Already released, by a person or by an earlier run of this workflow.
+          if git merge-base --is-ancestor "$SHA" "$latest"; then
+            skip "$SHA is already in $latest."
+          fi
+
+          # Merge commits carry no change of their own. Every other commit must be Dependabot's.
+          dependabot='49699333+dependabot[bot]@users.noreply.github.com'
+          others=$(git log --no-merges --format='%h %ae %s' "$latest..$SHA" \
+            | awk -v d="$dependabot" '$2 != d' || true)
+          if [ -n "$others" ]; then
+            printf '%s\n' "$others"
+            skip "main has commits since $latest that are not Dependabot's. A person tags this Release."
+          fi
+
+          if [ -z "$(git diff --name-only "$latest...$SHA" -- . ':(exclude).github')" ]; then
+            skip "the updates since $latest change only .github/, which Composer does not install."
+          fi
+
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          next="v${major}.${minor}.$((patch + 1))"
+          if git rev-parse -q --verify "refs/tags/$next" > /dev/null; then
+            skip "$next already exists, but is not the newest tag. A person picks the version."
+          fi
+
+          echo "Dependabot updates since $latest:"
+          git log --no-merges --format='  %h %s' "$latest..$SHA"
+          {
+            echo "release=yes"
+            echo "latest=$latest"
+            echo "next=$next"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Tag the Release
+        if: steps.decide.outputs.release == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          LATEST: ${{ steps.decide.outputs.latest }}
+          NEXT: ${{ steps.decide.outputs.next }}
+        run: |
+          set -euo pipefail
+          gh release create "$NEXT" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --title "$NEXT" \
+            --notes-start-tag "$LATEST" \
+            --generate-notes
+          {
+            echo "### Released $NEXT"
+            echo
+            echo "- Dependabot updates since $LATEST"
+            echo "- Packagist reads the new tag through its GitHub webhook."
+          } >> "$GITHUB_STEP_SUMMARY"

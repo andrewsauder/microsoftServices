@@ -1,25 +1,70 @@
+# Dependabot opens a pull request when a dependency has a newer version.
+#
+# What happens to the pull request is in two workflows:
+#
+#   dependabot-auto-merge.yml  arms auto-merge on a minor or patch update, and on a security
+#                              update that is not a major bump. The pull request merges when
+#                              the required CI checks pass. Every other update waits for a
+#                              person.
+#   auto-release.yml           runs when CI passes on main. If every commit since the last
+#                              v* tag is Dependabot's, it tags the next patch version as a
+#                              GitHub Release. Packagist reads the tag.
+#
+# Security updates are not listed here. Dependabot opens them on its own when a Dependabot
+# alert opens, if Dependabot security updates are on in the repository settings.
+#
+# Each ecosystem groups its minor and patch updates into one pull request. One pull request
+# per week gives one Release instead of five. A major update always gets a pull request of its
+# own, so a person reads it.
+#
+# This setup comes from gcgov/lab-api. See docs/dependency-updates.md for the differences.
+
 version: 2
-
 updates:
-  - package-ecosystem: composer
-    directory: /
+  # composer.json. This is a library, so it commits no composer.lock.
+  #
+  # increase, not the increase-if-necessary that gcgov/lab-api uses. lab-api has a lock file,
+  # so a minor update inside a caret range changes composer.lock alone. This repository has no
+  # lock file, so increase-if-necessary would open a pull request for a major version only.
+  # increase raises the floor of the range instead, for example ^1.110 to ^1.115.
+  #
+  # The cooldown holds a version update until the release is three days old. Most compromised
+  # releases are found and pulled inside that window, and an update here releases with no
+  # person involved. A security update ignores the cooldown.
+  #
+  # The php rule is a guard. "php": ">=8.2" is the floor that the CI matrix tests. A person
+  # moves the floor and the matrix together.
+  - package-ecosystem: "composer"
+    directory: "/"
     schedule:
-      interval: weekly
-    # This is a library, so it commits no composer.lock. The default strategy for a library only widens
-    # a range, so a constraint such as ^1.110 gets a pull request for a new major version only.
-    # "increase" raises the floor of the range (^1.110 to ^1.115), so each new minor or patch version
-    # gets a pull request too.
-    versioning-strategy: increase
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "America/New_York"
+    versioning-strategy: "increase"
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+    ignore:
+      - dependency-name: "php"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
-      # One pull request, and so one release, for all the minor and patch updates of a week.
-      # Security updates and major updates still get a pull request of their own.
-      composer-minor-and-patch:
-        update-types: [minor, patch]
+      composer:
+        update-types: ["minor", "patch"]
 
-  - package-ecosystem: github-actions
-    directory: /
+  # The actions the workflows use. A change here alters nothing that Composer installs, so
+  # auto-release.yml does not tag a Release for it.
+  - package-ecosystem: "github-actions"
+    directory: "/"
     schedule:
-      interval: weekly
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "America/New_York"
+    commit-message:
+      prefix: "ci"
     groups:
-      github-actions-minor-and-patch:
-        update-types: [minor, patch]
+      github-actions:
+        update-types: ["minor", "patch"]
