@@ -88,6 +88,30 @@ if( $rsp->getStatus() < 200 || $rsp->getStatus() >= 300 ) {
 }
 ```
 
+`send()` puts every attachment in one `sendMail` request, and Graph rejects a request over about 4 MB.
+For larger attachments, use a draft.
+
+
+### Send Email With Large Attachments
+
+`createDraft()` creates the draft, then attaches each file in its own request. A file up to 3 MB goes in
+one `POST`. A larger file, up to 150 MB, goes through an upload session in ranges of about 3 MB. The
+total is limited only by the mailbox's message size limit: 35 MB by default in Exchange Online.
+
+If an attachment fails, `createDraft()` deletes the draft and throws a `serviceException`.
+
+```php
+$microsoftMail = new \andrewsauder\microsoftServices\mail( $config );
+$microsoftMail->addAttachment( '/tmp/report.pdf' );
+$microsoftMail->addAttachment( '/tmp/chain-of-custody.pdf' );
+
+$draft = $microsoftMail->createDraft( [ 'to@example.com' ], 'Subject', 'HTML compatible message', 'from@example.com', [ 'cc@example.com' ] );
+$microsoftMail->sendDraft( $draft->getId(), 'from@example.com' );
+```
+
+The application needs the `Mail.ReadWrite` permission to create the draft and attach files, and
+`Mail.Send` to send it.
+
 
 ### Reply Into a Thread
 

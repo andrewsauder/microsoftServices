@@ -8,6 +8,7 @@ use Microsoft\Graph\Exception\GraphException;
 
 class mail extends \andrewsauder\microsoftServices\components\service {
 
+	/** @var \andrewsauder\microsoftServices\mail\attachment[] */
 	private array $attachments = [];
 
 
@@ -23,28 +24,24 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 
 
 	/**
+	 * Queue a file to attach. The file is read when the message is created, so it must still exist then.
+	 *
+	 * createDraft() attaches each file in its own request, so a draft can carry files up to 150 MB each
+	 * (the mailbox's message size limit still applies - 35 MB by default in Exchange Online). send() puts
+	 * every file in its one sendMail request, which Graph rejects above about 4 MB in total; use
+	 * createDraft() and sendDraft() for larger attachments.
+	 *
 	 * @param string $filePath
 	 *
 	 * @return string File name as it will be uploaded
 	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
 	 */
 	public function addAttachment( string $filePath ): string {
-		if( !file_exists( $filePath ) ) {
-			throw new serviceException( 'File does not exist', 500 );
-		}
+		$attachment = \andrewsauder\microsoftServices\mail\attachment::fromFile( $filePath );
 
-		$fileName     = basename( $filePath );
-		$fileContents = file_get_contents( $filePath );
-		$mimeType     = mime_content_type( $filePath );
+		$this->attachments[] = $attachment;
 
-		$this->attachments[] = [
-			'@odata.type'  => '#microsoft.graph.fileAttachment',
-			'name'         => $fileName,
-			'contentType'  => $mimeType,
-			'contentBytes' => base64_encode( $fileContents )
-		];
-
-		return $fileName;
+		return $attachment->name;
 	}
 
 
@@ -99,7 +96,7 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 		];
 
 		if( count( $this->attachments )>0 ) {
-			$mailBody[ 'Message' ][ 'attachments' ] = $this->attachments;
+			$mailBody[ 'Message' ][ 'attachments' ] = array_map( static fn( \andrewsauder\microsoftServices\mail\attachment $attachment ) => $attachment->fileAttachmentBody(), $this->attachments );
 		}
 
 		try {
@@ -118,6 +115,14 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 
 
 	/**
+	 * Create a draft message, then attach each queued file in its own request: a file up to 3 MB in one
+	 * POST, a larger file (up to 150 MB) through an upload session. Because no single request carries
+	 * every file, the total is limited only by the mailbox's message size limit, not by the Graph 4 MB
+	 * request limit. If an attachment fails, the draft is deleted and the exception is thrown.
+	 *
+	 * The returned message is the draft as Graph created it, before the attachments were added. Its
+	 * immutable id is unchanged by the attachments; pass it to sendDraft().
+	 *
 	 * @param string|string[] $to
 	 * @param string          $subject
 	 * @param string          $content
@@ -191,10 +196,6 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 			'bccRecipients' => $bccRecipients
 		];
 
-		if( count( $this->attachments )>0 ) {
-			$mailBody[ 'attachments' ] = $this->attachments;
-		}
-
 		$headers = [
 			'Prefer' => 'IdType="ImmutableId"'
 		];
@@ -215,7 +216,131 @@ class mail extends \andrewsauder\microsoftServices\components\service {
 			throw new serviceException( 'Failed to create draft: ' . $e->getMessage(), $e->getCode(), $e );
 		}
 
+		if( count( $this->attachments )>0 ) {
+			$messageId = (string)$message->getId();
+			try {
+				foreach( $this->attachments as $attachment ) {
+					$this->attachToMessage( $graph, $from, $messageId, $attachment );
+				}
+			}
+			catch( serviceException $e ) {
+				$this->deleteMessageQuietly( $graph, $from, $messageId );
+				throw $e;
+			}
+		}
+
 		return $message;
+	}
+
+
+	/**
+	 * Attach one file to an existing draft message: one POST for a small file, an upload session for a
+	 * large one
+	 *
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	private function attachToMessage( \Microsoft\Graph\Graph $graph, string $from, string $messageId, \andrewsauder\microsoftServices\mail\attachment $attachment ): void {
+		$attachmentsUrl = '/users/' . $from . '/messages/' . $messageId . '/attachments';
+
+		if( !$attachment->usesUploadSession() ) {
+			try {
+				$graph->createRequest( 'POST', $attachmentsUrl )
+				      ->attachBody( $attachment->fileAttachmentBody() )
+				      ->execute();
+			}
+			catch( GraphException $e ) {
+				error_log( $e );
+				throw new serviceException( 'Failed to attach ' . $attachment->name . ': ' . $e->getMessage(), 500, $e );
+			}
+			catch( GuzzleException $e ) {
+				error_log( $e );
+				throw new serviceException( 'Failed to attach ' . $attachment->name . ': ' . $e->getMessage(), $e->getCode(), $e );
+			}
+			return;
+		}
+
+		try {
+			/** @var \Microsoft\Graph\Model\UploadSession $uploadSession */
+			$uploadSession = $graph->createRequest( 'POST', $attachmentsUrl . '/createUploadSession' )
+			                       ->setReturnType( \Microsoft\Graph\Model\UploadSession::class )
+			                       ->attachBody( $attachment->uploadSessionBody() )
+			                       ->execute();
+		}
+		catch( GraphException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to start the upload of ' . $attachment->name . ': ' . $e->getMessage(), 500, $e );
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to start the upload of ' . $attachment->name . ': ' . $e->getMessage(), $e->getCode(), $e );
+		}
+
+		$uploadUrl = (string)$uploadSession->getUploadUrl();
+		if( $uploadUrl==='' ) {
+			throw new serviceException( 'Graph did not return an upload URL for ' . $attachment->name, 500 );
+		}
+
+		$this->uploadInRanges( $uploadUrl, $attachment );
+	}
+
+
+	/**
+	 * PUT the file to an upload session URL, one range at a time, in order. The URL carries its own
+	 * token, so the requests send no Authorization header. Graph answers 200 to each range and
+	 * 201 Created to the last one, which completes the attachment.
+	 *
+	 * @throws \andrewsauder\microsoftServices\exceptions\serviceException
+	 */
+	private function uploadInRanges( string $uploadUrl, \andrewsauder\microsoftServices\mail\attachment $attachment ): void {
+		$handle = @fopen( $attachment->path, 'rb' );
+		if( $handle===false ) {
+			throw new serviceException( 'Unable to read the attachment ' . $attachment->name, 500 );
+		}
+
+		$client = new \GuzzleHttp\Client();
+
+		try {
+			$status = 0;
+			foreach( \andrewsauder\microsoftServices\mail\attachment::byteRanges( $attachment->size ) as [ $first, $last ] ) {
+				$length = $last - $first + 1;
+				$bytes  = stream_get_contents( $handle, $length, $first );
+				if( $bytes===false || strlen( $bytes )!==$length ) {
+					throw new serviceException( 'Unable to read the attachment ' . $attachment->name, 500 );
+				}
+
+				$response = $client->request( 'PUT', $uploadUrl, [
+					'headers' => [
+						'Content-Type'   => 'application/octet-stream',
+						'Content-Length' => (string)$length,
+						'Content-Range'  => \andrewsauder\microsoftServices\mail\attachment::contentRange( $first, $last, $attachment->size )
+					],
+					'body'    => $bytes
+				] );
+				$status   = $response->getStatusCode();
+			}
+
+			if( $status!==201 ) {
+				throw new serviceException( 'Graph did not complete the upload of ' . $attachment->name . ' (HTTP ' . $status . ')', 500 );
+			}
+		}
+		catch( GuzzleException $e ) {
+			error_log( $e );
+			throw new serviceException( 'Failed to upload ' . $attachment->name . ': ' . $e->getMessage(), $e->getCode() ?: 500, $e );
+		}
+		finally {
+			fclose( $handle );
+		}
+	}
+
+
+	/** Remove a draft that a failed attachment left half built. A failure here is logged, not thrown. */
+	private function deleteMessageQuietly( \Microsoft\Graph\Graph $graph, string $from, string $messageId ): void {
+		try {
+			$graph->createRequest( 'DELETE', '/users/' . $from . '/messages/' . $messageId )->execute();
+		}
+		catch( \Throwable $e ) {
+			error_log( 'Failed to delete the draft ' . $messageId . ' after an attachment failed: ' . $e->getMessage() );
+		}
 	}
 
 
