@@ -6,6 +6,7 @@ namespace andrewsauder\microsoftServices\tests\exceptions;
 
 use andrewsauder\microsoftServices\exceptions\serviceException;
 use GuzzleHttp\Exception\TransferException;
+use GuzzleHttp\Psr7\Request;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -53,7 +54,7 @@ final class serviceExceptionTest extends TestCase {
 	public function acceptsGuzzleExceptionAsPrevious(): void {
 		//GuzzleException only guarantees Throwable, not Exception - this is the case the constructor signature fix
 		//had to support
-		$previous  = new TransferException( 'transfer blew up' );
+		$previous  = new TransferException( 'transfer blew up', new Request( 'GET', 'https://graph.microsoft.com/v1.0/me' ) );
 		$exception = new serviceException( 'wrapped guzzle error', 502, $previous );
 
 		$this->assertSame( $previous, $exception->getPrevious() );
