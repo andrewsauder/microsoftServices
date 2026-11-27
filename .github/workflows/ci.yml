@@ -52,3 +52,20 @@ jobs:
           coverage: none
       - run: composer install --no-interaction --no-progress --prefer-dist
       - run: composer test
+
+  # composer.json allows Guzzle 7 and Guzzle 8. The jobs above resolve Guzzle 8, so this job pins Guzzle 7
+  # on the lowest PHP version.
+  phpunit-guzzle-7:
+    name: PHPUnit (PHP 8.3, Guzzle 7)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: fileinfo, openssl
+          tools: composer:v2
+          coverage: none
+      - run: composer require "guzzlehttp/guzzle:^7.9" --no-update --no-interaction
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: composer test
